@@ -84,6 +84,7 @@ vgp_server_sources = files(
   'src/server/seat.c',
   'src/server/animation.c',
   'src/server/lockscreen.c',
+  'src/server/tiling.c',
   'src/server/backend_cpu.c',
   'src/server/arena.c',
   'src/server/pool.c',

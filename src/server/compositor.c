@@ -1,4 +1,5 @@
 #include "compositor.h"
+#include "tiling.h"
 #include "vgp/log.h"
 
 #include <string.h>
@@ -334,5 +335,62 @@ void vgp_compositor_focus_cycle(vgp_compositor_t *comp, int direction)
             vgp_compositor_focus_window(comp, win);
             return;
         }
+    }
+}
+
+void vgp_compositor_retile(vgp_compositor_t *comp, int workspace,
+                            struct vgp_tile_config *tile_config,
+                            const vgp_theme_t *theme)
+{
+    if (!tile_config) return;
+
+    /* Find the output showing this workspace */
+    vgp_output_info_t *out = NULL;
+    for (int i = 0; i < comp->output_count; i++) {
+        if (comp->outputs[i].workspace == workspace) {
+            out = &comp->outputs[i];
+            break;
+        }
+    }
+    if (!out) return;
+
+    /* Usable area (minus panel) */
+    float bar_h = theme->statusbar_height;
+    vgp_rect_t area = {
+        out->x, 0,
+        (int32_t)out->width,
+        (int32_t)out->height - (int32_t)bar_h,
+    };
+
+    /* Collect tileable windows on this workspace */
+    vgp_window_t *tile_wins[VGP_TILE_MAX_WINDOWS];
+    int tile_count = 0;
+
+    for (int i = 0; i < comp->window_count; i++) {
+        vgp_window_t *w = comp->z_order[i];
+        if (!w->visible || w->state == VGP_WIN_MINIMIZED)
+            continue;
+        if (w->workspace != workspace)
+            continue;
+        if (!w->decorated) /* override windows don't tile */
+            continue;
+        if (w->floating_override) /* explicitly floating */
+            continue;
+        if (tile_count >= VGP_TILE_MAX_WINDOWS)
+            break;
+        tile_wins[tile_count++] = w;
+    }
+
+    if (tile_count == 0) return;
+
+    /* Calculate tiled positions */
+    vgp_rect_t rects[VGP_TILE_MAX_WINDOWS];
+    int n = vgp_tile_calculate(tile_config, tile_count, area, rects);
+
+    /* Apply positions to windows */
+    for (int i = 0; i < n; i++) {
+        tile_wins[i]->frame_rect = rects[i];
+        tile_wins[i]->content_rect = vgp_window_content_rect(&rects[i], theme);
+        tile_wins[i]->state = VGP_WIN_NORMAL;
     }
 }

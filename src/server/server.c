@@ -1,5 +1,6 @@
 #include "server.h"
 #include "spawn.h"
+#include "tiling.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
 
@@ -34,6 +35,20 @@ void vgp_server_send_configure(vgp_server_t *server, vgp_window_t *win)
         .height = (uint32_t)win->content_rect.h,
     };
     vgp_ipc_send(client, &msg, sizeof(msg));
+}
+
+/* Re-tile a workspace if in tiling mode */
+static void server_retile(vgp_server_t *server, int workspace)
+{
+    if (strcmp(server->config.general.wm_mode, "floating") == 0) return;
+    vgp_tile_config_t tc = {
+        .algorithm = vgp_tile_parse_algorithm(server->config.general.tile_algorithm),
+        .master_ratio = server->config.general.tile_master_ratio,
+        .gap_inner = server->config.general.tile_gap_inner,
+        .gap_outer = server->config.general.tile_gap_outer,
+        .smart_gaps = server->config.general.tile_smart_gaps,
+    };
+    vgp_compositor_retile(&server->compositor, workspace, &tc, &server->config.theme);
 }
 
 static void statusbar_tick(void *data)
@@ -699,6 +714,9 @@ void vgp_server_handle_message(vgp_server_t *server,
             };
             vgp_ipc_send(client, &reply, sizeof(reply));
 
+            /* Re-tile if in tiling mode */
+            server_retile(server, win->workspace);
+
             /* Trigger open animation */
             vgp_anim_window_open(&server->animations, win->id,
                                   (float)win->frame_rect.x, (float)win->frame_rect.y,
@@ -714,7 +732,9 @@ void vgp_server_handle_message(vgp_server_t *server,
         if (win_id > 0 && win_id <= VGP_MAX_WINDOWS) {
             vgp_window_t *win = &server->compositor.windows[win_id - 1];
             if (win->used && win->client_fd == client->fd) {
+                int ws = win->workspace;
                 vgp_compositor_destroy_window(&server->compositor, win);
+                server_retile(server, ws);
                 vgp_renderer_schedule_frame(&server->renderer);
             }
         }

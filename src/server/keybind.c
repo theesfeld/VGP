@@ -1,6 +1,7 @@
 #include "keybind.h"
 #include "server.h"
 #include "lockscreen.h"
+#include "tiling.h"
 #include "spawn.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
@@ -99,6 +100,7 @@ static vgp_action_type_t parse_action_string(const char *str, char *cmd_out)
         { "screenshot",        VGP_ACTION_SCREENSHOT },
         { "expose",            VGP_ACTION_EXPOSE },
         { "lock",              VGP_ACTION_LOCK },
+        { "toggle_float",     VGP_ACTION_TOGGLE_FLOAT },
         { "snap_left",         VGP_ACTION_SNAP_LEFT },
         { "snap_right",        VGP_ACTION_SNAP_RIGHT },
         { "snap_top",          VGP_ACTION_SNAP_TOP },
@@ -320,6 +322,27 @@ void vgp_keybind_execute(struct vgp_server *server, const vgp_keybind_t *bind)
         vgp_lockscreen_lock(&server->lockscreen);
         vgp_renderer_schedule_frame(&server->renderer);
         break;
+
+    case VGP_ACTION_TOGGLE_FLOAT: {
+        vgp_window_t *focused = server->compositor.focused;
+        if (focused) {
+            focused->floating_override = !focused->floating_override;
+            /* Re-tile the workspace */
+            if (strcmp(server->config.general.wm_mode, "floating") != 0) {
+                vgp_tile_config_t tc = {
+                    .algorithm = vgp_tile_parse_algorithm(server->config.general.tile_algorithm),
+                    .master_ratio = server->config.general.tile_master_ratio,
+                    .gap_inner = server->config.general.tile_gap_inner,
+                    .gap_outer = server->config.general.tile_gap_outer,
+                    .smart_gaps = server->config.general.tile_smart_gaps,
+                };
+                vgp_compositor_retile(&server->compositor, focused->workspace,
+                                       &tc, &server->config.theme);
+            }
+            vgp_renderer_schedule_frame(&server->renderer);
+        }
+        break;
+    }
 
     case VGP_ACTION_EXPOSE: {
         server->compositor.expose_active = !server->compositor.expose_active;

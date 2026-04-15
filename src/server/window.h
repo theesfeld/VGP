@@ -60,6 +60,7 @@ typedef struct vgp_window {
 
     /* Workspace this window belongs to (0-based) */
     int                workspace;
+    bool               floating_override; /* true = always float even in tiling mode */
 
     /* GPU: persistent NanoVG image handle for pixel surfaces (-1 = none) */
     int                nvg_image;

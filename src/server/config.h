@@ -20,7 +20,12 @@ typedef struct vgp_config_general {
     float font_size;
     bool  focus_follows_mouse;
     int   workspace_count;
-    char  wm_mode[16];              /* "floating" or "tiling" */
+    char  wm_mode[16];              /* "floating", "tiling", "hybrid" */
+    char  tile_algorithm[32];       /* "golden_ratio", "equal", "master_stack", "spiral" */
+    float tile_master_ratio;        /* master window ratio for master_stack (0.0-1.0) */
+    int   tile_gap_inner;           /* pixels between tiled windows */
+    int   tile_gap_outer;           /* pixels between tiled windows and screen edge */
+    bool  tile_smart_gaps;          /* hide gaps when only 1 window */
 } vgp_config_general_t;
 
 typedef struct vgp_config_input {

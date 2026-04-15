@@ -102,6 +102,12 @@ void vgp_compositor_resize_window(vgp_compositor_t *comp,
 /* Cycle focus among visible windows on the current workspace */
 void vgp_compositor_focus_cycle(vgp_compositor_t *comp, int direction);
 
+/* Re-tile all windows on a workspace according to the tiling config */
+struct vgp_tile_config;
+void vgp_compositor_retile(vgp_compositor_t *comp, int workspace,
+                            struct vgp_tile_config *tile_config,
+                            const vgp_theme_t *theme);
+
 /* Determine which output the cursor is on */
 int vgp_compositor_output_at_cursor(vgp_compositor_t *comp);
 

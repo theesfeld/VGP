@@ -19,6 +19,11 @@ void vgp_config_load_defaults(vgp_config_t *config)
              "vgp-launcher");
     config->general.font_size = 14.0f;
     snprintf(config->general.wm_mode, sizeof(config->general.wm_mode), "floating");
+    snprintf(config->general.tile_algorithm, sizeof(config->general.tile_algorithm), "golden_ratio");
+    config->general.tile_master_ratio = 0.55f;
+    config->general.tile_gap_inner = 6;
+    config->general.tile_gap_outer = 8;
+    config->general.tile_smart_gaps = true;
     snprintf(config->general.theme_name, sizeof(config->general.theme_name), "dark");
 
     /* Screenshot directory: XDG Pictures or HOME */
@@ -94,6 +99,7 @@ void vgp_config_load_defaults(vgp_config_t *config)
         { "Super+3",              "workspace_3" },
         { "Super+Tab",            "expose" },
         { "Super+l",              "lock" },
+        { "Super+space",          "toggle_float" },
         { "Super+Left",           "snap_left" },
         { "Super+Right",          "snap_right" },
         { "Super+Up",             "snap_top" },
@@ -221,6 +227,16 @@ int vgp_config_load(vgp_config_t *config, const char *path)
                 config->general.workspace_count = atoi(val);
             else if (strcmp(key, "wm_mode") == 0)
                 snprintf(config->general.wm_mode, sizeof(config->general.wm_mode), "%s", val);
+            else if (strcmp(key, "tile_algorithm") == 0)
+                snprintf(config->general.tile_algorithm, sizeof(config->general.tile_algorithm), "%s", val);
+            else if (strcmp(key, "tile_master_ratio") == 0)
+                config->general.tile_master_ratio = strtof(val, NULL);
+            else if (strcmp(key, "tile_gap_inner") == 0)
+                config->general.tile_gap_inner = atoi(val);
+            else if (strcmp(key, "tile_gap_outer") == 0)
+                config->general.tile_gap_outer = atoi(val);
+            else if (strcmp(key, "tile_smart_gaps") == 0)
+                config->general.tile_smart_gaps = strcmp(val, "true") == 0;
             else if (strcmp(key, "screenshot_dir") == 0)
                 snprintf(config->general.screenshot_dir,
                          sizeof(config->general.screenshot_dir), "%s", val);
