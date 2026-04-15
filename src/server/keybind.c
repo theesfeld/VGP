@@ -1,5 +1,6 @@
 #include "keybind.h"
 #include "server.h"
+#include "lockscreen.h"
 #include "spawn.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
@@ -97,6 +98,7 @@ static vgp_action_type_t parse_action_string(const char *str, char *cmd_out)
         { "workspace_9",       VGP_ACTION_WORKSPACE_9 },
         { "screenshot",        VGP_ACTION_SCREENSHOT },
         { "expose",            VGP_ACTION_EXPOSE },
+        { "lock",              VGP_ACTION_LOCK },
         { "snap_left",         VGP_ACTION_SNAP_LEFT },
         { "snap_right",        VGP_ACTION_SNAP_RIGHT },
         { "snap_top",          VGP_ACTION_SNAP_TOP },
@@ -312,6 +314,11 @@ void vgp_keybind_execute(struct vgp_server *server, const vgp_keybind_t *bind)
 
     case VGP_ACTION_EXEC:
         vgp_spawn(server, bind->cmd);
+        break;
+
+    case VGP_ACTION_LOCK:
+        vgp_lockscreen_lock(&server->lockscreen);
+        vgp_renderer_schedule_frame(&server->renderer);
         break;
 
     case VGP_ACTION_EXPOSE: {

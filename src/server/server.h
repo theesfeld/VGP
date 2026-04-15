@@ -16,6 +16,7 @@
 #include "ipc.h"
 #include "notify.h"
 #include "animation.h"
+#include "lockscreen.h"
 #include "arena.h"
 
 #include "vgp/log.h"
@@ -38,6 +39,7 @@ typedef struct vgp_server {
     vgp_timer_t            animation_timer;
     vgp_notify_t           notify;
     vgp_animation_mgr_t   animations;
+    vgp_lockscreen_t      lockscreen;
 
     /* Clipboard */
     char                  *clipboard_data;

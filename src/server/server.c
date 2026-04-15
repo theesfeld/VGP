@@ -1,4 +1,5 @@
 #include "server.h"
+#include "spawn.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
 
@@ -157,8 +158,11 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
         goto err_arena;
     vgp_timer_arm_repeating(&server->statusbar_timer, VGP_MS_TO_NS(1000));
 
-    /* 12. Animation system */
+    /* 12. Animation system + lock screen */
     vgp_anim_init(&server->animations, 0.2f, true);
+    vgp_lockscreen_init(&server->lockscreen,
+                          server->config.lockscreen.enabled,
+                          server->config.lockscreen.timeout_min);
 
     /* 13. Notification daemon (D-Bus) */
     vgp_notify_init(&server->notify, &server->loop);
@@ -174,6 +178,13 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
 
     server->running = true;
     VGP_LOG_INFO(TAG, "VGP server initialized successfully");
+
+    /* Auto-start programs from config */
+    for (int i = 0; i < server->config.session.autostart_count; i++) {
+        VGP_LOG_INFO(TAG, "autostart: %s", server->config.session.autostart[i]);
+        vgp_spawn(server, server->config.session.autostart[i]);
+    }
+
     return 0;
 
 err_arena:
@@ -280,6 +291,18 @@ void vgp_server_handle_key(vgp_server_t *server, uint32_t keycode, bool pressed)
     vgp_key_event_t key_event;
     vgp_keyboard_process_key(&server->keyboard, keycode, pressed, &key_event);
 
+    /* Lock screen intercepts ALL input when active */
+    if (vgp_lockscreen_is_locked(&server->lockscreen)) {
+        if (pressed)
+            vgp_lockscreen_key(&server->lockscreen, key_event.keysym,
+                                key_event.utf8, (int)key_event.utf8_len);
+        vgp_renderer_schedule_frame(&server->renderer);
+        return;
+    }
+
+    /* Reset idle timer on any input */
+    vgp_lockscreen_input_activity(&server->lockscreen);
+
     /* Check keybinds BEFORE forwarding to client */
     const vgp_keybind_t *bind = vgp_keybind_match(&server->keybinds, &key_event);
     if (bind) {
@@ -314,6 +337,9 @@ void vgp_server_handle_key(vgp_server_t *server, uint32_t keycode, bool pressed)
 
 void vgp_server_handle_pointer_motion(vgp_server_t *server, double dx, double dy)
 {
+    vgp_lockscreen_input_activity(&server->lockscreen);
+    if (vgp_lockscreen_is_locked(&server->lockscreen)) return;
+
     /* Total screen bounds = all outputs laid out side by side */
     uint32_t screen_w = 0, screen_h = 0;
     for (int i = 0; i < server->compositor.output_count; i++) {
@@ -889,6 +915,7 @@ void vgp_server_render_frame(vgp_server_t *server)
     vgp_notify_dispatch(&server->notify);
     vgp_notify_tick(&server->notify, 0.016f);
     vgp_anim_tick(&server->animations, 0.016f);
+    vgp_lockscreen_tick(&server->lockscreen, 0.016f);
 
     /* Update cursor shape based on what's under it */
     {
@@ -930,6 +957,7 @@ void vgp_server_render_frame(vgp_server_t *server)
                                     &server->compositor,
                                     &server->config.theme,
                                     &server->notify,
-                                    &server->animations);
+                                    &server->animations,
+                                    &server->lockscreen);
     }
 }

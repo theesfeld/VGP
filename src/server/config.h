@@ -20,6 +20,7 @@ typedef struct vgp_config_general {
     float font_size;
     bool  focus_follows_mouse;
     int   workspace_count;
+    char  wm_mode[16];              /* "floating" or "tiling" */
 } vgp_config_general_t;
 
 typedef struct vgp_config_input {
@@ -51,6 +52,18 @@ typedef struct vgp_config_panel {
     int   right_count;
 } vgp_config_panel_t;
 
+#define VGP_CONFIG_MAX_AUTOSTART 16
+
+typedef struct vgp_config_lockscreen {
+    bool  enabled;
+    int   timeout_min;
+} vgp_config_lockscreen_t;
+
+typedef struct vgp_config_session {
+    char  autostart[VGP_CONFIG_MAX_AUTOSTART][256];
+    int   autostart_count;
+} vgp_config_session_t;
+
 typedef struct vgp_keybind_entry {
     char key_str[64];
     char action_str[256];
@@ -62,6 +75,8 @@ typedef struct vgp_config {
     vgp_theme_t           theme;
 
     vgp_config_panel_t    panel;
+    vgp_config_lockscreen_t lockscreen;
+    vgp_config_session_t session;
     vgp_config_monitor_t  monitors[VGP_MAX_OUTPUTS];
     int                   monitor_count;
 

@@ -3,6 +3,7 @@
 #include "window.h"
 #include "notify.h"
 #include "animation.h"
+#include "lockscreen.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
 
@@ -750,7 +751,8 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  vgp_compositor_t *comp,
                                  vgp_theme_t *theme,
                                  struct vgp_notify *notify,
-                                 struct vgp_animation_mgr *anims)
+                                 struct vgp_animation_mgr *anims,
+                                 struct vgp_lockscreen *lock)
 {
     if (output->page_flip_pending)
         return;
@@ -896,6 +898,15 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
         vgp_notify_render(notify, b, ctx,
                            (float)output->width, (float)output->height,
                            theme->statusbar_font_size);
+
+    /* Layer 5: Lock screen (covers everything when locked) */
+    if (lock && vgp_lockscreen_is_locked(lock)) {
+        static float lock_time = 0;
+        lock_time += 0.016f;
+        vgp_lockscreen_render(lock, b, ctx,
+                               (float)output->width, (float)output->height,
+                               lock_time);
+    }
 
     /* End frame */
     b->ops->end_frame(b, output_idx, output);

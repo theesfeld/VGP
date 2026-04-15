@@ -20,6 +20,7 @@ dep_math  = cc.find_library('m')
 dep_dl    = cc.find_library('dl')
 dep_dbus  = dependency('dbus-1', required : false)
 dep_seat  = dependency('libseat')
+dep_crypt = cc.find_library('crypt')
 
 # plutovg as a subproject
 plutovg_proj = subproject('plutovg')
@@ -82,6 +83,7 @@ vgp_server_sources = files(
   'src/server/notify.c',
   'src/server/seat.c',
   'src/server/animation.c',
+  'src/server/lockscreen.c',
   'src/server/backend_cpu.c',
   'src/server/arena.c',
   'src/server/pool.c',
@@ -114,6 +116,7 @@ executable('vgp',
     dep_dl,
     dep_dbus,
     dep_seat,
+    dep_crypt,
   ] + gpu_deps,
   install : true,
 )
@@ -175,7 +178,7 @@ executable('vgp-launcher',
 vgp_ui_inc = include_directories('src/libvgp-ui')
 
 libvgp_ui = static_library('vgp-ui',
-  files('src/libvgp-ui/vgp-ui.c'),
+  files('src/libvgp-ui/vgp-ui.c', 'src/libvgp-ui/config-writer.c'),
   include_directories : [vgp_inc, vgp_ui_inc],
   dependencies : [dep_libvgp],
 )

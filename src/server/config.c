@@ -18,6 +18,7 @@ void vgp_config_load_defaults(vgp_config_t *config)
     snprintf(config->general.launcher_cmd, sizeof(config->general.launcher_cmd),
              "vgp-launcher");
     config->general.font_size = 14.0f;
+    snprintf(config->general.wm_mode, sizeof(config->general.wm_mode), "floating");
     snprintf(config->general.theme_name, sizeof(config->general.theme_name), "dark");
 
     /* Screenshot directory: XDG Pictures or HOME */
@@ -58,6 +59,13 @@ void vgp_config_load_defaults(vgp_config_t *config)
     config->panel.right_count = 1;
     snprintf(config->panel.right_widgets[0], 32, "clock");
 
+    /* Lock screen defaults */
+    config->lockscreen.enabled = true;
+    config->lockscreen.timeout_min = 5;
+
+    /* Session defaults */
+    config->session.autostart_count = 0;
+
     /* Monitor defaults: auto layout, auto workspace */
     for (int i = 0; i < VGP_MAX_OUTPUTS; i++) {
         config->monitors[i].configured = false;
@@ -85,6 +93,7 @@ void vgp_config_load_defaults(vgp_config_t *config)
         { "Super+2",              "workspace_2" },
         { "Super+3",              "workspace_3" },
         { "Super+Tab",            "expose" },
+        { "Super+l",              "lock" },
         { "Super+Left",           "snap_left" },
         { "Super+Right",          "snap_right" },
         { "Super+Up",             "snap_top" },
@@ -210,6 +219,8 @@ int vgp_config_load(vgp_config_t *config, const char *path)
                 config->general.focus_follows_mouse = strcmp(val, "true") == 0;
             else if (strcmp(key, "workspaces") == 0)
                 config->general.workspace_count = atoi(val);
+            else if (strcmp(key, "wm_mode") == 0)
+                snprintf(config->general.wm_mode, sizeof(config->general.wm_mode), "%s", val);
             else if (strcmp(key, "screenshot_dir") == 0)
                 snprintf(config->general.screenshot_dir,
                          sizeof(config->general.screenshot_dir), "%s", val);
@@ -278,6 +289,17 @@ int vgp_config_load(vgp_config_t *config, const char *path)
                     snprintf(config->panel.right_widgets[config->panel.right_count++], 32, "%s", tok);
                     tok = strtok(NULL, ",");
                 }
+            }
+        } else if (strcmp(section, "lockscreen") == 0) {
+            if (strcmp(key, "enabled") == 0)
+                config->lockscreen.enabled = strcmp(val, "true") == 0;
+            else if (strcmp(key, "timeout") == 0)
+                config->lockscreen.timeout_min = atoi(val);
+        } else if (strcmp(section, "session") == 0) {
+            if (strcmp(key, "autostart") == 0 &&
+                config->session.autostart_count < VGP_CONFIG_MAX_AUTOSTART) {
+                snprintf(config->session.autostart[config->session.autostart_count++],
+                         256, "%s", val);
             }
         } else if (strncmp(section, "monitor.", 8) == 0) {
             /* [monitor.0], [monitor.1], etc. */
