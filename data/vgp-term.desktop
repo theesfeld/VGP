@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VGP Terminal
+Comment=Terminal emulator
+Exec=vgp-term
+Terminal=false
+Categories=System;VGP;

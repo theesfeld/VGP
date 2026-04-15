@@ -1,0 +1,4 @@
+option('debug_log', type : 'boolean', value : true,
+       description : 'Enable debug logging')
+option('sanitizers', type : 'boolean', value : false,
+       description : 'Enable address and undefined behavior sanitizers')

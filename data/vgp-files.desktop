@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VGP Files
+Comment=File manager
+Exec=vgp-files
+Terminal=false
+Categories=FileManager;VGP;

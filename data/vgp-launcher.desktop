@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VGP Launcher
+Comment=Application launcher
+Exec=vgp-launcher
+Terminal=false
+Categories=System;VGP;

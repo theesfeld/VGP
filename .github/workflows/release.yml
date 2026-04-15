@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git base-devel meson ninja \
+            libdrm libinput libxkbcommon seatd dbus libvterm \
+            mesa mesa-utils
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          meson setup build -Dprefix=/usr
+          meson compile -C build
+          DESTDIR=pkg meson install -C build
+          tar czf "vgp-${TAG_NAME}-x86_64.tar.gz" -C pkg .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vgp-*.tar.gz
+          generate_release_notes: true
+
+  aur:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update PKGBUILD version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG_NAME#v}"
+          sed -i "s/pkgver=.*/pkgver=$VERSION/" PKGBUILD
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: vgp-git
+          pkgbuild: ./PKGBUILD
+          commit_username: github-actions
+          commit_email: github-actions@github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to version"

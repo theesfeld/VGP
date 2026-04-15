@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=VGP
+Comment=Vector Graphics Protocol - GPU-accelerated display server
+Exec=vgp
+DesktopNames=VGP

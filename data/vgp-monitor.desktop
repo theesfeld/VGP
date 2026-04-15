@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VGP Monitor
+Comment=System monitor
+Exec=vgp-monitor
+Terminal=false
+Categories=System;VGP;

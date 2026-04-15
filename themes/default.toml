@@ -1,0 +1,20 @@
+# VGP Default Theme
+# All colors are hex RGB (without alpha)
+
+[geometry]
+titlebar_height = 32.0
+border_width = 2.0
+corner_radius = 8.0
+statusbar_height = 28.0
+
+[colors]
+titlebar_active = "#2D2D2D"
+titlebar_inactive = "#1E1E1E"
+border_active = "#5294E2"
+border_inactive = "#3C3C3C"
+background = "#1A1A2E"
+statusbar_bg = "#16213E"
+statusbar_text = "#C0C0C0"
+close_btn = "#E06060"
+maximize_btn = "#60C060"
+minimize_btn = "#E0C040"

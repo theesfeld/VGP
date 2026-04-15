@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VGP Settings
+Comment=System configuration
+Exec=vgp-settings
+Terminal=false
+Categories=Settings;VGP;
