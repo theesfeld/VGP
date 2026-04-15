@@ -173,11 +173,21 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
         goto err_arena;
     vgp_timer_arm_repeating(&server->statusbar_timer, VGP_MS_TO_NS(1000));
 
-    /* 12. Animation system + lock screen */
+    /* 12. Animation, lock screen, desktop menu, IPC control, power */
     vgp_anim_init(&server->animations, 0.2f, true);
     vgp_lockscreen_init(&server->lockscreen,
                           server->config.lockscreen.enabled,
                           server->config.lockscreen.timeout_min);
+    vgp_menu_init(&server->desktop_menu);
+    vgp_menu_add(&server->desktop_menu, "Terminal", NULL);
+    vgp_menu_add(&server->desktop_menu, "Files", NULL);
+    vgp_menu_add(&server->desktop_menu, "Settings", NULL);
+    vgp_menu_add_separator(&server->desktop_menu);
+    vgp_menu_add(&server->desktop_menu, "Lock Screen", NULL);
+    vgp_menu_add_separator(&server->desktop_menu);
+    vgp_menu_add(&server->desktop_menu, "Quit VGP", NULL);
+    vgp_ipc_control_init(&server->ctl, &server->loop);
+    vgp_power_init(&server->power, 15);
 
     /* 13. Notification daemon (D-Bus) */
     vgp_notify_init(&server->notify, &server->loop);
@@ -235,6 +245,10 @@ void vgp_server_shutdown(vgp_server_t *server)
 {
     VGP_LOG_INFO(TAG, "shutting down VGP server");
 
+    /* Save session before shutdown */
+    vgp_session_save(server);
+
+    vgp_ipc_control_destroy(&server->ctl, &server->loop);
     vgp_notify_destroy(&server->notify, &server->loop);
     vgp_timer_destroy(&server->animation_timer, &server->loop);
     vgp_timer_destroy(&server->statusbar_timer, &server->loop);
@@ -315,8 +329,9 @@ void vgp_server_handle_key(vgp_server_t *server, uint32_t keycode, bool pressed)
         return;
     }
 
-    /* Reset idle timer on any input */
+    /* Reset idle timers on any input */
     vgp_lockscreen_input_activity(&server->lockscreen);
+    vgp_power_input_activity(&server->power, server);
 
     /* Check keybinds BEFORE forwarding to client */
     const vgp_keybind_t *bind = vgp_keybind_match(&server->keybinds, &key_event);
@@ -353,6 +368,7 @@ void vgp_server_handle_key(vgp_server_t *server, uint32_t keycode, bool pressed)
 void vgp_server_handle_pointer_motion(vgp_server_t *server, double dx, double dy)
 {
     vgp_lockscreen_input_activity(&server->lockscreen);
+    vgp_power_input_activity(&server->power, server);
     if (vgp_lockscreen_is_locked(&server->lockscreen)) return;
 
     /* Total screen bounds = all outputs laid out side by side */
@@ -714,6 +730,16 @@ void vgp_server_handle_message(vgp_server_t *server,
             };
             vgp_ipc_send(client, &reply, sizeof(reply));
 
+            /* Apply window rules based on title match */
+            for (int ri = 0; ri < server->config.window_rule_count; ri++) {
+                vgp_window_rule_t *rule = &server->config.window_rules[ri];
+                if (strstr(win->title, rule->title_match)) {
+                    if (rule->floating) win->floating_override = true;
+                    if (rule->workspace >= 0) win->workspace = rule->workspace;
+                    break;
+                }
+            }
+
             /* Re-tile if in tiling mode */
             server_retile(server, win->workspace);
 
@@ -936,6 +962,7 @@ void vgp_server_render_frame(vgp_server_t *server)
     vgp_notify_tick(&server->notify, 0.016f);
     vgp_anim_tick(&server->animations, 0.016f);
     vgp_lockscreen_tick(&server->lockscreen, 0.016f);
+    vgp_power_tick(&server->power, 0.016f, server);
 
     /* Update cursor shape based on what's under it */
     {

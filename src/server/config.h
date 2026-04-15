@@ -7,8 +7,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define VGP_CONFIG_MAX_PATH     512
-#define VGP_CONFIG_MAX_KEYBINDS 128
+#define VGP_CONFIG_MAX_PATH         512
+#define VGP_CONFIG_MAX_KEYBINDS     128
+#define VGP_CONFIG_MAX_WINDOW_RULES 32
+
+typedef struct vgp_window_rule {
+    char  title_match[128];
+    bool  floating;
+    int   workspace;   /* -1 = default */
+    int   width, height; /* 0 = default */
+} vgp_window_rule_t;
 
 typedef struct vgp_config_general {
     char  terminal_cmd[VGP_CONFIG_MAX_PATH];
@@ -80,6 +88,8 @@ typedef struct vgp_config {
     vgp_theme_t           theme;
 
     vgp_config_panel_t    panel;
+    vgp_window_rule_t     window_rules[VGP_CONFIG_MAX_WINDOW_RULES];
+    int                   window_rule_count;
     vgp_config_lockscreen_t lockscreen;
     vgp_config_session_t session;
     vgp_config_monitor_t  monitors[VGP_MAX_OUTPUTS];

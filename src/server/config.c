@@ -71,6 +71,9 @@ void vgp_config_load_defaults(vgp_config_t *config)
     /* Session defaults */
     config->session.autostart_count = 0;
 
+    /* Window rules */
+    config->window_rule_count = 0;
+
     /* Monitor defaults: auto layout, auto workspace */
     for (int i = 0; i < VGP_MAX_OUTPUTS; i++) {
         config->monitors[i].configured = false;
@@ -305,6 +308,31 @@ int vgp_config_load(vgp_config_t *config, const char *path)
                     snprintf(config->panel.right_widgets[config->panel.right_count++], 32, "%s", tok);
                     tok = strtok(NULL, ",");
                 }
+            }
+        } else if (strncmp(section, "rule.", 5) == 0) {
+            /* [rule.firefox], [rule.terminal], etc. */
+            const char *rule_name = section + 5;
+            int ri = -1;
+            for (int i = 0; i < config->window_rule_count; i++) {
+                if (strcmp(config->window_rules[i].title_match, rule_name) == 0) {
+                    ri = i;
+                    break;
+                }
+            }
+            if (ri < 0 && config->window_rule_count < VGP_CONFIG_MAX_WINDOW_RULES) {
+                ri = config->window_rule_count++;
+                snprintf(config->window_rules[ri].title_match,
+                         sizeof(config->window_rules[ri].title_match), "%s", rule_name);
+                config->window_rules[ri].workspace = -1;
+            }
+            if (ri >= 0) {
+                vgp_window_rule_t *r = &config->window_rules[ri];
+                if (strcmp(key, "floating") == 0) r->floating = strcmp(val, "true") == 0;
+                else if (strcmp(key, "workspace") == 0) r->workspace = atoi(val);
+                else if (strcmp(key, "width") == 0) r->width = atoi(val);
+                else if (strcmp(key, "height") == 0) r->height = atoi(val);
+                else if (strcmp(key, "match") == 0)
+                    snprintf(r->title_match, sizeof(r->title_match), "%s", val);
             }
         } else if (strcmp(section, "lockscreen") == 0) {
             if (strcmp(key, "enabled") == 0)
