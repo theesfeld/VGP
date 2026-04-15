@@ -55,7 +55,7 @@ pacman -S meson libdrm libinput libxkbcommon seatd dbus libvterm mesa
 ### Build
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/VGP.git
+git clone https://github.com/theesfeld/VGP.git
 cd VGP
 meson setup build
 meson compile -C build

@@ -4,7 +4,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="GPU-accelerated vector display server and desktop environment"
 arch=('x86_64')
-url="https://github.com/YOUR_USERNAME/VGP"
+url="https://github.com/theesfeld/VGP"
 license=('MIT')
 depends=(
   'libdrm'
