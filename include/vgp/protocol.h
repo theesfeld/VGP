@@ -68,6 +68,9 @@ typedef enum {
     VGP_MSG_FOCUS_IN         = 0x0120,
     VGP_MSG_FOCUS_OUT        = 0x0121,
 
+    /* Theme info (server -> client on connect + reload) */
+    VGP_MSG_THEME_INFO       = 0x0033,
+
     /* Clipboard */
     VGP_MSG_CLIPBOARD_SET    = 0x01A0,  /* client -> server: set clipboard content */
     VGP_MSG_CLIPBOARD_GET    = 0x01A1,  /* client -> server: request clipboard */
@@ -191,5 +194,85 @@ typedef struct vgp_msg_set_font_size {
     vgp_msg_header_t header;
     float            font_size;
 } __attribute__((packed)) vgp_msg_set_font_size_t;
+
+/* ============================================================
+ * Draw commands (graphical UI protocol)
+ * ============================================================
+ * VGP_MSG_DRAW_COMMANDS carries a packed stream of draw opcodes.
+ * All coordinates are window-local (0,0 = content area top-left).
+ * Server translates to screen space during rendering.
+ * Wire format: [u8 opcode][payload bytes] packed tightly.
+ */
+
+typedef enum {
+    VGP_DCMD_CLEAR         = 0x01,  /* r,g,b,a (4f = 16B) */
+    VGP_DCMD_RECT          = 0x02,  /* x,y,w,h,r,g,b,a (8f = 32B) */
+    VGP_DCMD_ROUNDED_RECT  = 0x03,  /* x,y,w,h,radius,r,g,b,a (9f = 36B) */
+    VGP_DCMD_CIRCLE        = 0x04,  /* cx,cy,rad,r,g,b,a (7f = 28B) */
+    VGP_DCMD_LINE          = 0x05,  /* x1,y1,x2,y2,width,r,g,b,a (9f = 36B) */
+    VGP_DCMD_TEXT          = 0x06,  /* x,y,size,r,g,b,a (7f=28B) + u16 len + text */
+    VGP_DCMD_PUSH_STATE    = 0x07,  /* 0B payload */
+    VGP_DCMD_POP_STATE     = 0x08,  /* 0B payload */
+    VGP_DCMD_SET_CLIP      = 0x09,  /* x,y,w,h (4f = 16B) */
+    VGP_DCMD_RECT_OUTLINE  = 0x0A,  /* x,y,w,h,line_w,r,g,b,a (9f = 36B) */
+    VGP_DCMD_RRECT_OUTLINE = 0x0B,  /* x,y,w,h,radius,line_w,r,g,b,a (10f = 40B) */
+    VGP_DCMD_TEXT_BOLD     = 0x0C,  /* same as TEXT */
+    VGP_DCMD_GRADIENT_RECT = 0x0E,  /* x,y,w,h,r1,g1,b1,a1,r2,g2,b2,a2 (12f = 48B) */
+} vgp_dcmd_opcode_t;
+
+/* Draw commands message header */
+typedef struct vgp_msg_draw_commands {
+    vgp_msg_header_t header;  /* type = VGP_MSG_DRAW_COMMANDS */
+    uint32_t cmd_count;       /* number of commands in stream */
+    uint32_t cmd_bytes;       /* total bytes of command data */
+    /* command stream follows: cmd_bytes bytes of packed [opcode][payload] */
+} __attribute__((packed)) vgp_msg_draw_commands_t;
+
+/* ============================================================
+ * Theme info (server -> client)
+ * ============================================================
+ * Sent on connect and on theme hot-reload.
+ * Provides 16 semantic colors + sizing/font metrics so
+ * clients can build themed UIs without hardcoded values.
+ */
+
+/* Semantic color slot indices */
+enum {
+    VGP_THEME_BG = 0,
+    VGP_THEME_BG_SECONDARY,
+    VGP_THEME_BG_TERTIARY,
+    VGP_THEME_FG,
+    VGP_THEME_FG_SECONDARY,
+    VGP_THEME_FG_DISABLED,
+    VGP_THEME_ACCENT,
+    VGP_THEME_ACCENT_HOVER,
+    VGP_THEME_BORDER,
+    VGP_THEME_ERROR,
+    VGP_THEME_SUCCESS,
+    VGP_THEME_WARNING,
+    VGP_THEME_SCROLLBAR,
+    VGP_THEME_SCROLLBAR_THUMB,
+    VGP_THEME_SELECTION,
+    VGP_THEME_TOOLTIP_BG,
+    VGP_THEME_COLOR_COUNT = 16,
+};
+
+typedef struct vgp_msg_theme_info {
+    vgp_msg_header_t header;  /* type = VGP_MSG_THEME_INFO */
+    float colors[16][4];      /* 16 semantic RGBA colors */
+    float font_size;          /* default body text size */
+    float font_size_small;    /* small/secondary text */
+    float font_size_large;    /* headings */
+    float corner_radius;      /* standard rounding */
+    float padding;            /* standard padding */
+    float spacing;            /* standard element spacing */
+    float border_width;       /* standard border width */
+    float scrollbar_width;    /* scrollbar track width */
+    float button_height;      /* standard button height */
+    float input_height;       /* text input height */
+    float checkbox_size;      /* checkbox box size */
+    float slider_height;      /* slider track height */
+    float char_advances[95];  /* ASCII 32-126 advance widths at font_size */
+} __attribute__((packed)) vgp_msg_theme_info_t;
 
 #endif /* VGP_PROTOCOL_H */

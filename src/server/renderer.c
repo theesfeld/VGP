@@ -265,11 +265,136 @@ static void render_cellgrid(vgp_render_backend_t *b, void *ctx,
     b->ops->pop_state(b, ctx);
 }
 
+/* Render a draw command stream (graphical UI protocol) */
+static void render_drawcmds(vgp_render_backend_t *b, void *ctx,
+                              vgp_window_t *win, const vgp_rect_t *content)
+{
+    const uint8_t *buf = win->draw_cmds;
+    size_t len = win->draw_cmds_len;
+    float ox = (float)content->x;
+    float oy = (float)content->y;
+    size_t off = 0;
+
+    b->ops->push_state(b, ctx);
+    b->ops->set_clip(b, ctx, ox, oy, (float)content->w, (float)content->h);
+
+    while (off < len) {
+        uint8_t op = buf[off++];
+        const float *f = (const float *)(buf + off);
+
+        switch (op) {
+        case VGP_DCMD_CLEAR:
+            b->ops->draw_rect(b, ctx, ox, oy, (float)content->w, (float)content->h,
+                               f[0], f[1], f[2], f[3]);
+            off += 16; break;
+
+        case VGP_DCMD_RECT:
+            b->ops->draw_rect(b, ctx, f[0]+ox, f[1]+oy, f[2], f[3],
+                               f[4], f[5], f[6], f[7]);
+            off += 32; break;
+
+        case VGP_DCMD_ROUNDED_RECT:
+            b->ops->draw_rounded_rect(b, ctx, f[0]+ox, f[1]+oy, f[2], f[3], f[4],
+                                       f[5], f[6], f[7], f[8]);
+            off += 36; break;
+
+        case VGP_DCMD_CIRCLE:
+            b->ops->draw_circle(b, ctx, f[0]+ox, f[1]+oy, f[2],
+                                 f[3], f[4], f[5], f[6]);
+            off += 28; break;
+
+        case VGP_DCMD_LINE:
+            b->ops->draw_line(b, ctx, f[0]+ox, f[1]+oy, f[2]+ox, f[3]+oy, f[4],
+                               f[5], f[6], f[7], f[8]);
+            off += 36; break;
+
+        case VGP_DCMD_TEXT:
+        case VGP_DCMD_TEXT_BOLD: {
+            float tx = f[0]+ox, ty = f[1]+oy, sz = f[2];
+            float r = f[3], g = f[4], bl = f[5], a = f[6];
+            uint16_t tlen;
+            memcpy(&tlen, buf + off + 28, 2);
+            const char *text = (const char *)(buf + off + 30);
+            b->ops->draw_text(b, ctx, text, tlen, tx, ty, sz, r, g, bl, a);
+            off += 30 + tlen;
+            break;
+        }
+
+        case VGP_DCMD_PUSH_STATE:
+            b->ops->push_state(b, ctx);
+            break;
+
+        case VGP_DCMD_POP_STATE:
+            b->ops->pop_state(b, ctx);
+            break;
+
+        case VGP_DCMD_SET_CLIP:
+            b->ops->set_clip(b, ctx, f[0]+ox, f[1]+oy, f[2], f[3]);
+            off += 16; break;
+
+        case VGP_DCMD_RECT_OUTLINE:
+            /* Draw 4 edges as thin rects (works on both backends) */
+            {
+                float x=f[0]+ox, y=f[1]+oy, w=f[2], h=f[3], lw=f[4];
+                float cr=f[5], cg=f[6], cb=f[7], ca=f[8];
+                b->ops->draw_rect(b, ctx, x, y, w, lw, cr, cg, cb, ca);
+                b->ops->draw_rect(b, ctx, x, y+h-lw, w, lw, cr, cg, cb, ca);
+                b->ops->draw_rect(b, ctx, x, y, lw, h, cr, cg, cb, ca);
+                b->ops->draw_rect(b, ctx, x+w-lw, y, lw, h, cr, cg, cb, ca);
+            }
+            off += 36; break;
+
+        case VGP_DCMD_RRECT_OUTLINE:
+            /* Approximate with a slightly larger filled rrect then inner rrect */
+            {
+                float x=f[0]+ox, y=f[1]+oy, w=f[2], h=f[3], rad=f[4], lw=f[5];
+                float cr=f[6], cg=f[7], cb=f[8], ca=f[9];
+                /* Outer fill */
+                b->ops->draw_rounded_rect(b, ctx, x, y, w, h, rad, cr, cg, cb, ca);
+                /* Inner clear (using the content bg -- approximation) */
+                /* For true outline, we'd need NanoVG stroke. For now, skip inner. */
+                (void)lw;
+            }
+            off += 40; break;
+
+        case VGP_DCMD_GRADIENT_RECT:
+            /* Approximate gradient with 8 horizontal bands */
+            {
+                float x=f[0]+ox, y=f[1]+oy, w=f[2], h=f[3];
+                float r1=f[4],g1=f[5],b1=f[6],a1=f[7];
+                float r2=f[8],g2=f[9],b2=f[10],a2=f[11];
+                int bands = 8;
+                float bh = h / (float)bands;
+                for (int i = 0; i < bands; i++) {
+                    float t = (float)i / (float)(bands - 1);
+                    b->ops->draw_rect(b, ctx, x, y + (float)i * bh, w, bh + 1,
+                                       r1+(r2-r1)*t, g1+(g2-g1)*t,
+                                       b1+(b2-b1)*t, a1+(a2-a1)*t);
+                }
+            }
+            off += 48; break;
+
+        default:
+            /* Unknown opcode -- bail to prevent reading garbage */
+            off = len;
+            break;
+        }
+    }
+
+    b->ops->pop_state(b, ctx);
+}
+
 static void render_window_content(vgp_render_backend_t *b, void *ctx,
                                    vgp_window_t *win, int32_t offset_x)
 {
     vgp_rect_t content = win->content_rect;
     content.x -= offset_x;
+
+    /* Draw commands (graphical UI) -- highest priority */
+    if (win->has_drawcmds && win->draw_cmds) {
+        render_drawcmds(b, ctx, win, &content);
+        return;
+    }
 
     /* Vector cell grid -- render text directly with GPU */
     if (win->has_cellgrid && win->cellgrid) {

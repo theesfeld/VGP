@@ -831,6 +831,58 @@ void vgp_server_handle_message(vgp_server_t *server,
             .display_height = h,
         };
         vgp_ipc_send(client, &reply, sizeof(reply));
+
+        /* Send theme info to client for graphical UI toolkit */
+        {
+            vgp_msg_theme_info_t ti;
+            memset(&ti, 0, sizeof(ti));
+            ti.header.magic = VGP_PROTOCOL_MAGIC;
+            ti.header.type = VGP_MSG_THEME_INFO;
+            ti.header.length = sizeof(ti);
+            const vgp_theme_t *t = &server->config.theme;
+            /* Map theme colors to 16 semantic slots */
+            #define SC(slot, c) do { ti.colors[slot][0]=c.r; ti.colors[slot][1]=c.g; ti.colors[slot][2]=c.b; ti.colors[slot][3]=c.a; } while(0)
+            SC(VGP_THEME_BG, t->content_bg);
+            SC(VGP_THEME_BG_SECONDARY, t->titlebar_active);
+            SC(VGP_THEME_BG_TERTIARY, t->statusbar_bg);
+            SC(VGP_THEME_FG, t->title_text_active);
+            SC(VGP_THEME_FG_SECONDARY, t->statusbar_text);
+            SC(VGP_THEME_FG_DISABLED, t->title_text_inactive);
+            SC(VGP_THEME_ACCENT, t->border_active);
+            vgp_color_t ah = {t->border_active.r*1.2f, t->border_active.g*1.2f, t->border_active.b*1.2f, 1};
+            SC(VGP_THEME_ACCENT_HOVER, ah);
+            SC(VGP_THEME_BORDER, t->border_inactive);
+            SC(VGP_THEME_ERROR, t->close_btn);
+            SC(VGP_THEME_SUCCESS, t->maximize_btn);
+            SC(VGP_THEME_WARNING, t->minimize_btn);
+            SC(VGP_THEME_SCROLLBAR, t->background);
+            vgp_color_t st = {t->statusbar_text.r, t->statusbar_text.g, t->statusbar_text.b, 0.5f};
+            SC(VGP_THEME_SCROLLBAR_THUMB, st);
+            vgp_color_t sel = {t->border_active.r, t->border_active.g, t->border_active.b, 0.3f};
+            SC(VGP_THEME_SELECTION, sel);
+            vgp_color_t ttbg = {0.19f, 0.19f, 0.25f, 0.95f};
+            SC(VGP_THEME_TOOLTIP_BG, ttbg);
+            #undef SC
+            /* Sizes */
+            ti.font_size = t->statusbar_font_size > 0 ? t->statusbar_font_size : 14.0f;
+            ti.font_size_small = ti.font_size - 2;
+            ti.font_size_large = ti.font_size + 4;
+            ti.corner_radius = t->corner_radius;
+            ti.padding = 8.0f;
+            ti.spacing = 6.0f;
+            ti.border_width = t->border_width;
+            ti.scrollbar_width = 8.0f;
+            ti.button_height = 28.0f;
+            ti.input_height = 26.0f;
+            ti.checkbox_size = 18.0f;
+            ti.slider_height = 6.0f;
+            /* Font advance widths (ASCII 32-126) */
+            /* Approximate: monospace at reference size, each char ≈ font_size * 0.6 */
+            for (int ci = 0; ci < 95; ci++)
+                ti.char_advances[ci] = ti.font_size * 0.6f;
+            vgp_ipc_send(client, &ti, sizeof(ti));
+        }
+
         VGP_LOG_INFO(TAG, "client %u connected (handshake complete)", client->client_id);
         break;
     }
@@ -1086,6 +1138,33 @@ void vgp_server_handle_message(vgp_server_t *server,
                     win->cursor_shape = msg->cursor_shape;
                     win->has_cellgrid = true;
                 }
+
+                vgp_renderer_schedule_frame(&server->renderer);
+            }
+        }
+        break;
+    }
+
+    case VGP_MSG_DRAW_COMMANDS: {
+        vgp_msg_draw_commands_t *msg = (vgp_msg_draw_commands_t *)hdr;
+        uint32_t win_id = hdr->window_id;
+        if (win_id > 0 && win_id <= VGP_MAX_WINDOWS) {
+            vgp_window_t *win = &server->compositor.windows[win_id - 1];
+            if (win->used) {
+                uint32_t cmd_bytes = msg->cmd_bytes;
+                void *cmd_data = (uint8_t *)(msg + 1);
+
+                /* Reallocate if buffer is too small */
+                if (win->draw_cmds_len < cmd_bytes) {
+                    free(win->draw_cmds);
+                    win->draw_cmds = malloc(cmd_bytes);
+                    if (!win->draw_cmds) { win->draw_cmds_len = 0; break; }
+                }
+                memcpy(win->draw_cmds, cmd_data, cmd_bytes);
+                win->draw_cmds_len = cmd_bytes;
+                win->draw_cmd_count = msg->cmd_count;
+                win->has_drawcmds = true;
+                win->has_cellgrid = false; /* draw commands take priority */
 
                 vgp_renderer_schedule_frame(&server->renderer);
             }

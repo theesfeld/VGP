@@ -75,6 +75,12 @@ typedef struct vgp_window {
     uint8_t            cursor_shape;
     bool               has_cellgrid;
     float              font_size_override; /* 0 = use default, >0 = client requested */
+
+    /* Draw commands (graphical UI protocol) */
+    void              *draw_cmds;        /* packed command stream */
+    size_t             draw_cmds_len;    /* byte length of command data */
+    uint32_t           draw_cmd_count;
+    bool               has_drawcmds;
 } vgp_window_t;
 
 /* Compute content rect from frame rect using theme decoration sizes */

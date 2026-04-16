@@ -48,6 +48,7 @@ typedef enum {
     VGP_EVENT_FOCUS_OUT,
     VGP_EVENT_CONFIGURE,
     VGP_EVENT_CLOSE,
+    VGP_EVENT_THEME_INFO,
 } vgp_event_type_t;
 
 typedef struct vgp_event {
@@ -84,6 +85,15 @@ typedef struct vgp_event {
             uint32_t width, height;
             int32_t  x, y;
         } configure;
+
+        struct {
+            float colors[16][4];
+            float font_size, font_size_small, font_size_large;
+            float corner_radius, padding, spacing;
+            float border_width, scrollbar_width;
+            float button_height, input_height, checkbox_size, slider_height;
+            float char_advances[95];
+        } theme;
     };
 } vgp_event_t;
 
@@ -176,6 +186,11 @@ char *vgp_clipboard_get(vgp_connection_t *conn, size_t *out_len);
 
 /* Ask the server to open a URL using the configured handler. */
 void vgp_open_url(vgp_connection_t *conn, const char *url);
+
+/* Send a draw command buffer for graphical UI rendering. */
+void vgp_draw_commands_send(vgp_connection_t *conn, uint32_t window_id,
+                              const uint8_t *cmds, size_t cmd_bytes,
+                              uint32_t cmd_count);
 
 #ifdef __cplusplus
 }

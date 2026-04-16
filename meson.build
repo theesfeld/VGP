@@ -198,6 +198,24 @@ dep_vgp_ui = declare_dependency(
 )
 
 # ============================================================
+# Graphical UI library for VGP apps (draw commands, not cell grid)
+# ============================================================
+
+vgp_gfx_inc = include_directories('src/libvgp-gfx')
+
+libvgp_gfx = static_library('vgp-gfx',
+  files('src/libvgp-gfx/vgp-gfx.c', 'src/libvgp-gfx/vgp-gfx-widgets.c'),
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_libvgp],
+)
+
+dep_vgp_gfx = declare_dependency(
+  link_with : libvgp_gfx,
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_libvgp],
+)
+
+# ============================================================
 # VGP Settings
 # ============================================================
 

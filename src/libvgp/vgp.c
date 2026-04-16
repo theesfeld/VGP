@@ -251,6 +251,26 @@ static void process_messages(vgp_connection_t *conn)
                 ev.type = VGP_EVENT_CLOSE;
                 conn->event_cb(conn, &ev, conn->event_cb_data);
                 break;
+            case VGP_MSG_THEME_INFO: {
+                vgp_msg_theme_info_t *ti = (vgp_msg_theme_info_t *)hdr;
+                ev.type = VGP_EVENT_THEME_INFO;
+                memcpy(ev.theme.colors, ti->colors, sizeof(ti->colors));
+                ev.theme.font_size = ti->font_size;
+                ev.theme.font_size_small = ti->font_size_small;
+                ev.theme.font_size_large = ti->font_size_large;
+                ev.theme.corner_radius = ti->corner_radius;
+                ev.theme.padding = ti->padding;
+                ev.theme.spacing = ti->spacing;
+                ev.theme.border_width = ti->border_width;
+                ev.theme.scrollbar_width = ti->scrollbar_width;
+                ev.theme.button_height = ti->button_height;
+                ev.theme.input_height = ti->input_height;
+                ev.theme.checkbox_size = ti->checkbox_size;
+                ev.theme.slider_height = ti->slider_height;
+                memcpy(ev.theme.char_advances, ti->char_advances, sizeof(ti->char_advances));
+                conn->event_cb(conn, &ev, conn->event_cb_data);
+                break;
+            }
             default:
                 break;
             }
@@ -526,6 +546,28 @@ char *vgp_clipboard_get(vgp_connection_t *conn, size_t *out_len)
 
     fcntl(conn->fd, F_SETFL, flags);
     return data;
+}
+
+void vgp_draw_commands_send(vgp_connection_t *conn, uint32_t window_id,
+                              const uint8_t *cmds, size_t cmd_bytes,
+                              uint32_t cmd_count)
+{
+    if (!conn || !conn->connected || !cmds || cmd_bytes == 0) return;
+    size_t msg_size = sizeof(vgp_msg_draw_commands_t) + cmd_bytes;
+    uint8_t *buf = malloc(msg_size);
+    if (!buf) return;
+    vgp_msg_draw_commands_t *msg = (vgp_msg_draw_commands_t *)buf;
+    msg->header = (vgp_msg_header_t){
+        .magic = VGP_PROTOCOL_MAGIC,
+        .type = VGP_MSG_DRAW_COMMANDS,
+        .length = (uint32_t)msg_size,
+        .window_id = window_id,
+    };
+    msg->cmd_count = cmd_count;
+    msg->cmd_bytes = (uint32_t)cmd_bytes;
+    memcpy(buf + sizeof(vgp_msg_draw_commands_t), cmds, cmd_bytes);
+    send_all(conn->fd, buf, msg_size);
+    free(buf);
 }
 
 void vgp_open_url(vgp_connection_t *conn, const char *url)
