@@ -1,6 +1,5 @@
 build/
 subprojects/plutovg/
-subprojects/nanovg/
 *.o
 *.so
 *.ppm

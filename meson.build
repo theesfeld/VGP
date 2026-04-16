@@ -96,7 +96,7 @@ vgp_server_sources = files(
 
 # Add GPU backend sources if available
 gpu_deps = []
-nanovg_inc = include_directories('subprojects/nanovg/src')
+nanovg_inc = include_directories('include/nanovg')
 
 if gpu_backend_available
   add_project_arguments('-DVGP_HAS_GPU_BACKEND', language : 'c')
