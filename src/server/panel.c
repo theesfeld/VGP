@@ -358,13 +358,13 @@ void vgp_panel_render(vgp_render_backend_t *b, void *ctx,
     const vgp_color_t *ac = &theme->border_active;
     const vgp_color_t *tc = &theme->statusbar_text;
 
-    /* Background */
-    b->ops->draw_rect(b, ctx, g.x, g.y, g.w, g.h, bg->r, bg->g, bg->b, bg->a);
+    /* Glass panel background: very subtle tint (glass blur drawn in separate pass) */
+    b->ops->draw_rect(b, ctx, g.x, g.y, g.w, g.h, bg->r, bg->g, bg->b, 0.3f);
 
-    /* Border line (on the edge facing the desktop) */
+    /* Edge highlight (glass surface) */
     float border_y = g.top ? g.y + g.h : g.y;
     b->ops->draw_line(b, ctx, 0, border_y, g.w, border_y, 1.0f,
-                       ac->r, ac->g, ac->b, 0.5f);
+                       1.0f, 1.0f, 1.0f, 0.15f);
 
     panel_ctx_t p = {
         .b = b, .ctx = ctx, .theme = theme, .comp = comp,

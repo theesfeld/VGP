@@ -103,30 +103,10 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
     float edge_alpha = focused ? 0.25f : 0.12f;
 
     /* === Plexiglass pane ===
-     * Translucent glass with blurred/distorted background visible through it.
-     * Uses FBO compositing for photorealistic diffusion when available. */
-#ifdef VGP_HAS_GPU_BACKEND
-    if (b->type == VGP_BACKEND_GPU) {
-        vgp_gpu_state_t *gs = b->priv;
-        if (gs->fbo_initialized) {
-            /* End NanoVG to flush, draw glass blur via raw GL, restart NanoVG */
-            nvgEndFrame(ctx);
-            vgp_fbo_draw_blur_rect(gs, x, y, w, h, cr,
-                                     6.0f,  /* blur radius */
-                                     0.15f, 0.15f, 0.18f, 0.12f, /* subtle cool tint */
-                                     gs->fbo_width, gs->fbo_height);
-            nvgBeginFrame(ctx, gs->cur_width, gs->cur_height, 1.0f);
-        } else {
-            /* Fallback: flat translucent fill */
-            b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
-                                       0.5f, 0.5f, 0.55f, glass_alpha);
-        }
-    } else
-#endif
-    {
-        b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
-                                   0.5f, 0.5f, 0.55f, glass_alpha);
-    }
+     * Nearly invisible glass -- you see through it.
+     * Glass blur is drawn in a separate pass (see render_output).
+     * Here we just draw the very subtle glass surface indicators. */
+    (void)glass_alpha;
 
     /* Glass edge highlight (top-left light source) */
     b->ops->draw_rounded_rect(b, ctx, x, y, w, 1.5f, cr,
@@ -883,15 +863,51 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
          * on this output appear at the correct position */
     }
 
-    /* Capture scene to FBO for glass blur effects */
+    /* === GLASS COMPOSITING PASS ===
+     * End NanoVG (flushes background to screen), capture to FBO,
+     * then draw frosted glass blur quads for each window.
+     * Then restart NanoVG for window content + decorations. */
 #ifdef VGP_HAS_GPU_BACKEND
     if (b->type == VGP_BACKEND_GPU) {
         vgp_gpu_state_t *gs = b->priv;
         if (gs->fbo_initialized) {
-            /* End NanoVG frame temporarily to flush GL state */
+            /* Flush background render to GL */
             nvgEndFrame(ctx);
-            vgp_fbo_capture(gs, output->width, output->height);
+
+            /* Capture background to FBO texture */
             vgp_fbo_resize(gs, output->width, output->height);
+            vgp_fbo_capture(gs, output->width, output->height);
+
+            /* Draw glass blur for the panel */
+            {
+                float bar_h = (panel_cfg->height > 0) ? (float)panel_cfg->height : theme->statusbar_height;
+                bool ptop = (strcmp(panel_cfg->position, "top") == 0);
+                float panel_y = ptop ? 0 : (float)output->height - bar_h;
+                vgp_fbo_draw_blur_rect(gs, 0, panel_y, (float)output->width, bar_h, 0,
+                                         4.0f, 0.05f, 0.05f, 0.07f, 0.04f,
+                                         output->width, output->height);
+            }
+
+            /* Draw glass blur for each visible decorated window */
+            for (int gi = 0; gi < comp->window_count; gi++) {
+                vgp_window_t *gw = comp->z_order[gi];
+                if (!gw->visible || gw->state == VGP_WIN_MINIMIZED) continue;
+                if (gw->workspace != workspace) continue;
+                if (!gw->decorated) continue;
+
+                float gx = (float)(gw->frame_rect.x - out_x);
+                float gy = (float)gw->frame_rect.y;
+                float gwidth = (float)gw->frame_rect.w;
+                float gheight = (float)gw->frame_rect.h;
+                float gcr = theme->corner_radius > 0 ? theme->corner_radius : 10.0f;
+
+                vgp_fbo_draw_blur_rect(gs, gx, gy, gwidth, gheight, gcr,
+                                         5.0f,  /* blur radius */
+                                         0.08f, 0.08f, 0.10f, 0.06f, /* near-clear tint */
+                                         output->width, output->height);
+            }
+
+            /* Restart NanoVG for content rendering */
             nvgBeginFrame(ctx, (float)output->width, (float)output->height, 1.0f);
         }
     }
