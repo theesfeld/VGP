@@ -23,7 +23,7 @@ jobs:
             mesa pam
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 
@@ -41,13 +41,13 @@ jobs:
           tar czf "vgp-${TAG_NAME}-x86_64.tar.gz" -C pkg .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vgp-release
           path: vgp-*.tar.gz
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: vgp-*.tar.gz
           generate_release_notes: true
@@ -72,7 +72,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Generate .SRCINFO and update version
         env:
