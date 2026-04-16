@@ -57,6 +57,22 @@ static void menu_action_quit(void *srv, int idx) {
     vgp_server_t *s = srv; (void)idx;
     vgp_event_loop_stop(&s->loop);
 }
+static void menu_action_shutdown(void *srv, int idx) {
+    (void)srv; (void)idx;
+    /* systemd-logind: PowerOff */
+    system("dbus-send --system --print-reply --dest=org.freedesktop.login1 "
+           "/org/freedesktop/login1 org.freedesktop.login1.Manager.PowerOff boolean:true");
+}
+static void menu_action_reboot(void *srv, int idx) {
+    (void)srv; (void)idx;
+    system("dbus-send --system --print-reply --dest=org.freedesktop.login1 "
+           "/org/freedesktop/login1 org.freedesktop.login1.Manager.Reboot boolean:true");
+}
+static void menu_action_suspend(void *srv, int idx) {
+    (void)srv; (void)idx;
+    system("dbus-send --system --print-reply --dest=org.freedesktop.login1 "
+           "/org/freedesktop/login1 org.freedesktop.login1.Manager.Suspend boolean:true");
+}
 
 /* Window menu action callbacks */
 static void wmenu_close(void *srv, int idx) {
@@ -183,6 +199,7 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
     /* 8. Compositor */
     if (vgp_compositor_init(&server->compositor) < 0)
         goto err_keyboard;
+    server->compositor.panel_top = (strcmp(server->config.panel.position, "top") == 0);
 
     /* Set up output layout in compositor, applying monitor config */
     {
@@ -222,7 +239,7 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
         goto err_compositor;
     /* Apply accessibility settings to renderer */
     server->renderer.focus_indicator = server->config.accessibility.focus_indicator;
-    server->renderer.font_scale = server->config.accessibility.font_scale;
+    server->renderer.text_size = server->config.accessibility.text_size;
     server->renderer.large_cursor = server->config.accessibility.large_cursor;
 
     /* 9. IPC */
@@ -251,6 +268,10 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
     vgp_menu_add(&server->desktop_menu, "Settings", menu_action_settings);
     vgp_menu_add_separator(&server->desktop_menu);
     vgp_menu_add(&server->desktop_menu, "Lock Screen", menu_action_lock);
+    vgp_menu_add_separator(&server->desktop_menu);
+    vgp_menu_add(&server->desktop_menu, "Suspend", menu_action_suspend);
+    vgp_menu_add(&server->desktop_menu, "Reboot", menu_action_reboot);
+    vgp_menu_add(&server->desktop_menu, "Shutdown", menu_action_shutdown);
     vgp_menu_add_separator(&server->desktop_menu);
     vgp_menu_add(&server->desktop_menu, "Quit VGP", menu_action_quit);
     vgp_menu_init(&server->window_menu);
@@ -514,6 +535,15 @@ void vgp_server_handle_pointer_motion(vgp_server_t *server, double dx, double dy
         }
     }
 
+    /* Focus-follows-mouse: focus window under cursor on movement */
+    if (server->config.general.focus_follows_mouse && !grab->active) {
+        int32_t cx = (int32_t)cursor->x;
+        int32_t cy = (int32_t)cursor->y;
+        vgp_window_t *under = vgp_compositor_window_at(&server->compositor, cx, cy);
+        if (under && under != server->compositor.focused)
+            vgp_compositor_focus_window(&server->compositor, under);
+    }
+
     /* Send mouse move to focused window's client if cursor is over content */
     vgp_window_t *focused = server->compositor.focused;
     if (focused && focused->client_fd >= 0 && !grab->active) {
@@ -600,11 +630,21 @@ void vgp_server_handle_pointer_button(vgp_server_t *server,
             int32_t cx = (int32_t)cursor->x;
             int32_t cy = (int32_t)cursor->y;
 
-            /* Check if click is in the panel area */
+            /* Check notification click first */
             int active_out = vgp_compositor_output_at_cursor(&server->compositor);
             vgp_output_info_t *aout = &server->compositor.outputs[active_out];
             float local_x = cursor->x - (float)aout->x;
             float local_y = cursor->y - (float)aout->y;
+
+            if (server->notify.count > 0 &&
+                active_out == server->compositor.active_output &&
+                vgp_notify_click(&server->notify, local_x, local_y,
+                                  (float)aout->width, (float)aout->height)) {
+                vgp_renderer_schedule_frame(&server->renderer);
+                goto button_done;
+            }
+
+            /* Check if click is in the panel area */
 
             if (vgp_panel_click(&server->config.panel, &server->config.theme,
                                  local_x, local_y,
@@ -978,6 +1018,29 @@ void vgp_server_handle_message(vgp_server_t *server,
                        server->clipboard_data, payload_len);
             vgp_ipc_send(client, buf, msg_len);
             free(buf);
+        }
+        break;
+    }
+
+    case VGP_MSG_OPEN_URL: {
+        /* Client requests opening a URL */
+        size_t url_len = hdr->length - sizeof(vgp_msg_header_t);
+        if (url_len > 0 && url_len < 4096) {
+            char url[4096];
+            memcpy(url, (char *)(hdr + 1), url_len);
+            url[url_len] = '\0';
+            /* Expand %s in url_handler with the URL */
+            char cmd[4608];
+            const char *handler = server->config.general.url_handler;
+            const char *pct = strstr(handler, "%s");
+            if (pct) {
+                snprintf(cmd, sizeof(cmd), "%.*s%s%s",
+                         (int)(pct - handler), handler, url, pct + 2);
+            } else {
+                snprintf(cmd, sizeof(cmd), "%s '%s'", handler, url);
+            }
+            VGP_LOG_INFO(TAG, "open URL: %s", url);
+            vgp_spawn(server, cmd);
         }
         break;
     }

@@ -620,8 +620,47 @@ static void on_vgp_event(vgp_connection_t *conn, const vgp_event_t *ev, void *da
         (void)cw; (void)ch;
 
         if (ev->mouse_button.pressed && ev->mouse_button.button == 0x110) {
-            /* Left button press -- start selection */
-            selection_start(term, row, col);
+            /* Ctrl+click on URL: open it */
+            if (ev->mouse_button.modifiers & 0x04) { /* Ctrl */
+                /* Scan backward from click position to find URL start */
+                VTermScreen *screen = vterm_obtain_screen(term->vt);
+                int url_start = col, url_end = col;
+                /* Find start of URL (look for http) */
+                for (int c = col; c >= 0; c--) {
+                    VTermPos pos = {.row = row, .col = c};
+                    VTermScreenCell cell;
+                    vterm_screen_get_cell(screen, pos, &cell);
+                    if (cell.chars[0] <= 32) { url_start = c + 1; break; }
+                    if (c == 0) url_start = 0;
+                }
+                /* Find end of URL */
+                for (int c = col; c < term->cols; c++) {
+                    VTermPos pos = {.row = row, .col = c};
+                    VTermScreenCell cell;
+                    vterm_screen_get_cell(screen, pos, &cell);
+                    if (cell.chars[0] <= 32 || cell.chars[0] == '"' ||
+                        cell.chars[0] == '\'' || cell.chars[0] == '>' ||
+                        cell.chars[0] == ')') { url_end = c; break; }
+                    url_end = c + 1;
+                }
+                /* Extract URL text */
+                char url[2048] = {0};
+                int ui = 0;
+                for (int c = url_start; c < url_end && ui < (int)sizeof(url) - 1; c++) {
+                    VTermPos pos = {.row = row, .col = c};
+                    VTermScreenCell cell;
+                    vterm_screen_get_cell(screen, pos, &cell);
+                    if (cell.chars[0] > 0 && cell.chars[0] < 128)
+                        url[ui++] = (char)cell.chars[0];
+                }
+                url[ui] = '\0';
+                if (strncmp(url, "http", 4) == 0) {
+                    vgp_open_url(term->conn, url);
+                }
+            } else {
+                /* Left button press -- start selection */
+                selection_start(term, row, col);
+            }
         } else if (!ev->mouse_button.pressed && ev->mouse_button.button == 0x110) {
             /* Left button release -- finish selection */
             selection_update(term, row, col);

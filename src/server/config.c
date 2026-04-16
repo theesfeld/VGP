@@ -41,6 +41,8 @@ void vgp_config_load_defaults(vgp_config_t *config)
                      sizeof(config->general.screenshot_dir), "/tmp");
     }
     config->general.focus_follows_mouse = false;
+    snprintf(config->general.url_handler, sizeof(config->general.url_handler),
+             "vgp-term -e w3m '%%s'");
     config->general.workspace_count = 9;
 
     /* Input */
@@ -72,7 +74,7 @@ void vgp_config_load_defaults(vgp_config_t *config)
     /* Accessibility defaults */
     config->accessibility.high_contrast = false;
     config->accessibility.focus_indicator = false;
-    config->accessibility.font_scale = 1.0f;
+    config->accessibility.text_size = 0; /* 0 = use theme default */
     config->accessibility.reduce_animations = false;
     config->accessibility.large_cursor = false;
 
@@ -252,6 +254,9 @@ int vgp_config_load(vgp_config_t *config, const char *path)
             else if (strcmp(key, "screenshot_dir") == 0)
                 snprintf(config->general.screenshot_dir,
                          sizeof(config->general.screenshot_dir), "%s", val);
+            else if (strcmp(key, "url_handler") == 0)
+                snprintf(config->general.url_handler,
+                         sizeof(config->general.url_handler), "%s", val);
             else if (strcmp(key, "theme") == 0)
                 snprintf(config->general.theme_name,
                          sizeof(config->general.theme_name), "%s", val);
@@ -353,8 +358,8 @@ int vgp_config_load(vgp_config_t *config, const char *path)
                 config->accessibility.high_contrast = strcmp(val, "true") == 0;
             else if (strcmp(key, "focus_indicator") == 0)
                 config->accessibility.focus_indicator = strcmp(val, "true") == 0;
-            else if (strcmp(key, "font_scale") == 0)
-                config->accessibility.font_scale = (float)atof(val);
+            else if (strcmp(key, "text_size") == 0 || strcmp(key, "font_scale") == 0)
+                config->accessibility.text_size = (float)atof(val);
             else if (strcmp(key, "reduce_animations") == 0)
                 config->accessibility.reduce_animations = strcmp(val, "true") == 0;
             else if (strcmp(key, "large_cursor") == 0)

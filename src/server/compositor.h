@@ -47,6 +47,9 @@ typedef struct vgp_compositor {
     int               output_count;
     int               active_output;
 
+    /* Panel position (affects tiling/maximize y offset) */
+    bool              panel_top;  /* true = panel at top, false = bottom */
+
     /* Expose/overview mode */
     bool              expose_active;
     vgp_rect_t        expose_rects[VGP_MAX_WINDOWS]; /* tile positions for expose */

@@ -236,6 +236,94 @@ static float widget_battery(panel_ctx_t *p, float x)
     return x;
 }
 
+static float widget_volume(panel_ctx_t *p, float x)
+{
+    static int vol_pct = -1;
+    static bool muted = false;
+    static int poll_counter = 0;
+    /* Poll volume every ~60 frames (~1 second) */
+    if (poll_counter++ >= 60 || vol_pct < 0) {
+        poll_counter = 0;
+        FILE *f = popen("wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null", "r");
+        if (f) {
+            char line[128];
+            if (fgets(line, sizeof(line), f)) {
+                /* Format: "Volume: 0.75" or "Volume: 0.75 [MUTED]" */
+                float v = 0;
+                if (sscanf(line, "Volume: %f", &v) == 1)
+                    vol_pct = (int)(v * 100);
+                muted = (strstr(line, "MUTED") != NULL);
+            }
+            pclose(f);
+        }
+    }
+    char buf[16];
+    if (vol_pct >= 0) {
+        if (muted)
+            snprintf(buf, sizeof(buf), "VOL MUTE");
+        else
+            snprintf(buf, sizeof(buf), "VOL %d%%", vol_pct);
+    } else {
+        snprintf(buf, sizeof(buf), "VOL --");
+    }
+    p->b->ops->draw_text(p->b, p->ctx, buf, -1, x, p->text_y, p->fs - 1,
+                           p->tc->r, p->tc->g, p->tc->b, 0.7f);
+    return x + 70.0f;
+}
+
+static float widget_network(panel_ctx_t *p, float x)
+{
+    static char net_status[32] = "NET --";
+    static int poll_counter = 0;
+    /* Poll every ~120 frames (~2 seconds) */
+    if (poll_counter++ >= 120) {
+        poll_counter = 0;
+        /* Check /sys/class/net for an active interface */
+        const char *ifaces[] = {"wlan0", "wlp", "eth0", "enp", NULL};
+        bool found = false;
+        FILE *f;
+        char path[128], state[32];
+        /* Try common wireless interfaces first */
+        for (int i = 0; !found && ifaces[i]; i++) {
+            /* Check if interface exists and is up */
+            snprintf(path, sizeof(path), "/sys/class/net/%s/operstate", ifaces[i]);
+            f = fopen(path, "r");
+            if (f) {
+                if (fscanf(f, "%31s", state) == 1 && strcmp(state, "up") == 0) {
+                    snprintf(net_status, sizeof(net_status), "NET %s", ifaces[i]);
+                    found = true;
+                }
+                fclose(f);
+            }
+        }
+        if (!found) {
+            /* Scan /sys/class/net for any up interface */
+            f = popen("for d in /sys/class/net/*/operstate; do "
+                      "iface=$(echo $d | cut -d/ -f5); "
+                      "[ \"$(cat $d 2>/dev/null)\" = up ] && [ \"$iface\" != lo ] && "
+                      "echo $iface && break; done 2>/dev/null", "r");
+            if (f) {
+                char iface[32];
+                if (fgets(iface, sizeof(iface), f)) {
+                    size_t len = strlen(iface);
+                    while (len > 0 && iface[len-1] == '\n') iface[--len] = '\0';
+                    if (iface[0])
+                        snprintf(net_status, sizeof(net_status), "NET %s", iface);
+                    else
+                        snprintf(net_status, sizeof(net_status), "NET OFF");
+                    found = true;
+                }
+                pclose(f);
+            }
+            if (!found)
+                snprintf(net_status, sizeof(net_status), "NET OFF");
+        }
+    }
+    p->b->ops->draw_text(p->b, p->ctx, net_status, -1, x, p->text_y, p->fs - 1,
+                           p->tc->r, p->tc->g, p->tc->b, 0.7f);
+    return x + 80.0f;
+}
+
 static float render_widget(panel_ctx_t *p, const char *name, float x, float max_w)
 {
     if (strcmp(name, "workspaces") == 0) return widget_workspaces(p, x);
@@ -245,6 +333,8 @@ static float render_widget(panel_ctx_t *p, const char *name, float x, float max_
     if (strcmp(name, "cpu") == 0)        return widget_cpu(p, x);
     if (strcmp(name, "memory") == 0)     return widget_memory(p, x);
     if (strcmp(name, "battery") == 0)    return widget_battery(p, x);
+    if (strcmp(name, "volume") == 0)     return widget_volume(p, x);
+    if (strcmp(name, "network") == 0)    return widget_network(p, x);
     return x;
 }
 
@@ -306,6 +396,8 @@ void vgp_panel_render(vgp_render_backend_t *b, void *ctx,
         else if (strcmp(name, "cpu") == 0) right_total += 60.0f;
         else if (strcmp(name, "memory") == 0) right_total += 70.0f;
         else if (strcmp(name, "battery") == 0) right_total += 70.0f;
+        else if (strcmp(name, "volume") == 0) right_total += 70.0f;
+        else if (strcmp(name, "network") == 0) right_total += 80.0f;
         else right_total += 50.0f;
         if (i < cfg->right_count - 1) right_total += pad * 3;
     }
@@ -390,6 +482,8 @@ bool vgp_panel_click(const vgp_config_panel_t *cfg,
         else if (strcmp(name, "cpu") == 0) right_total += 60.0f;
         else if (strcmp(name, "memory") == 0) right_total += 70.0f;
         else if (strcmp(name, "battery") == 0) right_total += 70.0f;
+        else if (strcmp(name, "volume") == 0) right_total += 70.0f;
+        else if (strcmp(name, "network") == 0) right_total += 80.0f;
         else right_total += 50.0f;
         if (i < cfg->right_count - 1) right_total += pad * 3;
     }
@@ -401,7 +495,8 @@ bool vgp_panel_click(const vgp_config_panel_t *cfg,
             const char *name = cfg->right_widgets[i];
             float ww = 50.0f;
             if (strcmp(name, "cpu") == 0) ww = 60.0f;
-            else if (strcmp(name, "memory") == 0 || strcmp(name, "battery") == 0) ww = 70.0f;
+            else if (strcmp(name, "memory") == 0 || strcmp(name, "battery") == 0 || strcmp(name, "volume") == 0) ww = 70.0f;
+            else if (strcmp(name, "network") == 0) ww = 80.0f;
 
             if (local_x >= rx && local_x < rx + ww) {
                 if (strcmp(name, "clock") == 0 || strcmp(name, "date") == 0) {

@@ -174,6 +174,9 @@ void vgp_clipboard_set(vgp_connection_t *conn, const char *text, size_t len);
  * Caller must free(). Blocks briefly for server response. */
 char *vgp_clipboard_get(vgp_connection_t *conn, size_t *out_len);
 
+/* Ask the server to open a URL using the configured handler. */
+void vgp_open_url(vgp_connection_t *conn, const char *url);
+
 #ifdef __cplusplus
 }
 #endif

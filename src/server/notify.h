@@ -42,4 +42,8 @@ void vgp_notify_render(vgp_notify_t *notify, void *backend, void *ctx,
                         float screen_w, float screen_h,
                         float font_size);
 
+/* Click-to-dismiss: returns true if click hit a notification */
+bool vgp_notify_click(vgp_notify_t *notify, float x, float y,
+                       float screen_w, float screen_h);
+
 #endif /* VGP_NOTIFY_H */

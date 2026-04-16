@@ -527,3 +527,21 @@ char *vgp_clipboard_get(vgp_connection_t *conn, size_t *out_len)
     fcntl(conn->fd, F_SETFL, flags);
     return data;
 }
+
+void vgp_open_url(vgp_connection_t *conn, const char *url)
+{
+    if (!conn || !conn->connected || !url) return;
+    size_t url_len = strlen(url);
+    size_t msg_size = sizeof(vgp_msg_header_t) + url_len;
+    uint8_t *buf = malloc(msg_size);
+    if (!buf) return;
+    vgp_msg_header_t *hdr = (vgp_msg_header_t *)buf;
+    *hdr = (vgp_msg_header_t){
+        .magic = VGP_PROTOCOL_MAGIC,
+        .type = VGP_MSG_OPEN_URL,
+        .length = (uint32_t)msg_size,
+    };
+    memcpy(buf + sizeof(vgp_msg_header_t), url, url_len);
+    send_all(conn->fd, buf, msg_size);
+    free(buf);
+}

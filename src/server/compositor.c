@@ -269,8 +269,9 @@ void vgp_compositor_maximize_window(vgp_compositor_t *comp,
     }
 
     float bar_h = theme->statusbar_height;
+    int32_t wy = comp->panel_top ? (int32_t)bar_h : 0;
     win->frame_rect = (vgp_rect_t){
-        ox, 0, (int32_t)output_w, (int32_t)output_h - (int32_t)bar_h,
+        ox, wy, (int32_t)output_w, (int32_t)output_h - (int32_t)bar_h,
     };
     win->content_rect = vgp_window_content_rect(&win->frame_rect, theme);
 }
@@ -354,10 +355,11 @@ void vgp_compositor_retile(vgp_compositor_t *comp, int workspace,
     }
     if (!out) return;
 
-    /* Usable area (minus panel) */
+    /* Usable area (minus panel, offset for top panel) */
     float bar_h = theme->statusbar_height;
+    int32_t area_y = comp->panel_top ? (int32_t)bar_h : 0;
     vgp_rect_t area = {
-        out->x, 0,
+        out->x, area_y,
         (int32_t)out->width,
         (int32_t)out->height - (int32_t)bar_h,
     };

@@ -102,6 +102,33 @@ int launcher_init(launcher_t *l)
     launcher_scan_apps(&l->app_list);
     fprintf(stderr, "  found %d apps\n", l->app_list.count);
 
+    /* Load launch history (frecency) */
+    {
+        const char *home = getenv("HOME");
+        if (home) {
+            char path[512];
+            snprintf(path, sizeof(path), "%s/.config/vgp/launcher_history", home);
+            FILE *hf = fopen(path, "r");
+            if (hf) {
+                char line[256];
+                while (fgets(line, sizeof(line), hf)) {
+                    int count = 0;
+                    char name[128];
+                    if (sscanf(line, "%d %127[^\n]", &count, name) == 2) {
+                        for (int i = 0; i < l->app_list.count; i++) {
+                            if (strcmp(l->app_list.apps[i].name, name) == 0) {
+                                l->app_list.apps[i].launch_count = count;
+                                break;
+                            }
+                        }
+                    }
+                }
+                fclose(hf);
+                fprintf(stderr, "  loaded launch history\n");
+            }
+        }
+    }
+
     fprintf(stderr, "  connecting to VGP server\n");
     l->conn = vgp_connect(NULL);
     if (!l->conn) {
@@ -176,6 +203,24 @@ void launcher_launch_selected(launcher_t *l)
 
     int app_idx = l->filtered[l->selected_index].app_index;
     launcher_app_t *app = &l->app_list.apps[app_idx];
+
+    app->launch_count++;
+
+    /* Save history */
+    const char *home = getenv("HOME");
+    if (home) {
+        char path[512];
+        snprintf(path, sizeof(path), "%s/.config/vgp/launcher_history", home);
+        FILE *hf = fopen(path, "w");
+        if (hf) {
+            for (int i = 0; i < l->app_list.count; i++) {
+                launcher_app_t *a = &l->app_list.apps[i];
+                if (a->launch_count > 0)
+                    fprintf(hf, "%d %s\n", a->launch_count, a->name);
+            }
+            fclose(hf);
+        }
+    }
 
     pid_t pid = fork();
     if (pid == 0) {

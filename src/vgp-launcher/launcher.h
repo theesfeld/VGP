@@ -19,6 +19,7 @@ typedef struct launcher_app {
     char exec[LAUNCHER_MAX_EXEC];
     char name_lower[LAUNCHER_MAX_NAME];
     bool terminal;
+    int  launch_count;    /* frecency: how many times launched */
 } launcher_app_t;
 
 typedef struct launcher_app_list {

@@ -102,6 +102,9 @@ static vgp_action_type_t parse_action_string(const char *str, char *cmd_out)
         { "lock",              VGP_ACTION_LOCK },
         { "toggle_float",     VGP_ACTION_TOGGLE_FLOAT },
         { "toggle_dark_light", VGP_ACTION_TOGGLE_DARK_LIGHT },
+        { "volume_up",         VGP_ACTION_VOLUME_UP },
+        { "volume_down",       VGP_ACTION_VOLUME_DOWN },
+        { "volume_mute",       VGP_ACTION_VOLUME_MUTE },
         { "snap_left",         VGP_ACTION_SNAP_LEFT },
         { "snap_right",        VGP_ACTION_SNAP_RIGHT },
         { "snap_top",          VGP_ACTION_SNAP_TOP },
@@ -322,6 +325,11 @@ void vgp_keybind_execute(struct vgp_server *server, const vgp_keybind_t *bind)
                     }
                     fclose(f);
                     VGP_LOG_INFO("screenshot", "saved: %s (%ux%u)", path, w, h);
+
+                    /* Also copy path to clipboard */
+                    free(server->clipboard_data);
+                    server->clipboard_data = strdup(path);
+                    server->clipboard_len = strlen(path);
                 }
 
                 if (server->renderer.backend->type == VGP_BACKEND_GPU)
@@ -338,6 +346,16 @@ void vgp_keybind_execute(struct vgp_server *server, const vgp_keybind_t *bind)
     case VGP_ACTION_LOCK:
         vgp_lockscreen_lock(&server->lockscreen);
         vgp_renderer_schedule_frame(&server->renderer);
+        break;
+
+    case VGP_ACTION_VOLUME_UP:
+        system("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+");
+        break;
+    case VGP_ACTION_VOLUME_DOWN:
+        system("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-");
+        break;
+    case VGP_ACTION_VOLUME_MUTE:
+        system("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle");
         break;
 
     case VGP_ACTION_TOGGLE_DARK_LIGHT: {

@@ -179,6 +179,8 @@ void launcher_filter(launcher_t *l)
         int score = launcher_fuzzy_score(l->app_list.apps[i].name_lower,
                                           l->input_buf);
         if (score >= 0) {
+            /* Boost score by launch history (frecency) */
+            score += l->app_list.apps[i].launch_count * 10;
             l->filtered[l->filtered_count].app_index = i;
             l->filtered[l->filtered_count].score = score;
             l->filtered_count++;

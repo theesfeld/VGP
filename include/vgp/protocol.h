@@ -72,6 +72,7 @@ typedef enum {
     VGP_MSG_CLIPBOARD_SET    = 0x01A0,  /* client -> server: set clipboard content */
     VGP_MSG_CLIPBOARD_GET    = 0x01A1,  /* client -> server: request clipboard */
     VGP_MSG_CLIPBOARD_DATA   = 0x01A2,  /* server -> client: clipboard content */
+    VGP_MSG_OPEN_URL         = 0x01A3,  /* client -> server: open URL via handler */
 } vgp_msg_type_t;
 
 /* ============================================================

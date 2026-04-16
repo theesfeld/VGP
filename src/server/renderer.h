@@ -21,7 +21,7 @@ typedef struct vgp_renderer {
 
     /* Accessibility */
     bool                  focus_indicator;  /* draw bright ring around focused window */
-    float                 font_scale;       /* global text scale multiplier */
+    float                 text_size;        /* override vector text render size (0 = theme default) */
     bool                  large_cursor;     /* 2x cursor size */
 } vgp_renderer_t;
 

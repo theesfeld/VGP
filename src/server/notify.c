@@ -341,3 +341,28 @@ void vgp_notify_render(vgp_notify_t *notify, void *backend, void *ctx,
         y += notif_h + margin;
     }
 }
+
+bool vgp_notify_click(vgp_notify_t *notify, float click_x, float click_y,
+                       float screen_w, float screen_h)
+{
+    (void)screen_h;
+    float notif_w = 320.0f;
+    float notif_h = 70.0f;
+    float margin = 10.0f;
+    float x = screen_w - notif_w - margin;
+    float y = margin;
+
+    for (int i = 0; i < VGP_MAX_NOTIFICATIONS; i++) {
+        vgp_notification_t *n = &notify->notifications[i];
+        if (!n->active) continue;
+
+        if (click_x >= x && click_x < x + notif_w &&
+            click_y >= y && click_y < y + notif_h) {
+            n->active = false;
+            notify->count--;
+            return true;
+        }
+        y += notif_h + margin;
+    }
+    return false;
+}

@@ -71,7 +71,7 @@ typedef struct {
     /* Accessibility */
     bool            a11y_high_contrast;
     bool            a11y_focus_indicator;
-    float           a11y_font_scale;
+    float           a11y_text_size;
     bool            a11y_reduce_anims;
     bool            a11y_large_cursor;
 
@@ -147,7 +147,7 @@ static void load_config(void)
     state.bg_mode = 1;
     state.lock_enabled = true;
     state.lock_timeout = 5;
-    state.a11y_font_scale = 1.0f;
+    state.a11y_text_size = 0;
     state.edit_field = -1;
 
     FILE *f = fopen(state.config_path, "r");
@@ -230,7 +230,8 @@ static void load_config(void)
         } else if (strcmp(section, "accessibility") == 0) {
             if (strcmp(key, "high_contrast") == 0) state.a11y_high_contrast = strcmp(val, "true") == 0;
             else if (strcmp(key, "focus_indicator") == 0) state.a11y_focus_indicator = strcmp(val, "true") == 0;
-            else if (strcmp(key, "font_scale") == 0) state.a11y_font_scale = (float)atof(val);
+            else if (strcmp(key, "text_size") == 0 || strcmp(key, "font_scale") == 0)
+                state.a11y_text_size = (float)atof(val);
             else if (strcmp(key, "reduce_animations") == 0) state.a11y_reduce_anims = strcmp(val, "true") == 0;
             else if (strcmp(key, "large_cursor") == 0) state.a11y_large_cursor = strcmp(val, "true") == 0;
         }
@@ -275,8 +276,8 @@ static void save_config(void)
     config_set_value(p, "lockscreen", "timeout", buf);
     config_set_value(p, "accessibility", "high_contrast", state.a11y_high_contrast ? "true" : "false");
     config_set_value(p, "accessibility", "focus_indicator", state.a11y_focus_indicator ? "true" : "false");
-    snprintf(buf, sizeof(buf), "%.1f", state.a11y_font_scale);
-    config_set_value(p, "accessibility", "font_scale", buf);
+    snprintf(buf, sizeof(buf), "%.1f", state.a11y_text_size);
+    config_set_value(p, "accessibility", "text_size", buf);
     config_set_value(p, "accessibility", "reduce_animations", state.a11y_reduce_anims ? "true" : "false");
     config_set_value(p, "accessibility", "large_cursor", state.a11y_large_cursor ? "true" : "false");
 
@@ -579,9 +580,10 @@ static void render_accessibility(vui_ctx_t *ctx, int y, int x, int w)
     vui_tooltip(ctx, y, x+2, 30, "Double-size cursor for visibility");
     y += 2;
 
-    vui_label(ctx, y, x+2, "Font scale:", VUI_GRAY);
-    if (vui_slider(ctx, y, x + 18, 30, &state.a11y_font_scale, 0.5f, 3.0f, "%.1fx"))
-        set_status("Font scale changed");
+    vui_label(ctx, y, x+2, "Text size:", VUI_GRAY);
+    if (vui_slider(ctx, y, x + 18, 30, &state.a11y_text_size, 0, 32, "%.0f pt"))
+        set_status("Vector text size changed (0 = theme default)");
+    vui_tooltip(ctx, y, x+2, 16, "Override vector text render size. 0 = use theme default.");
     y += 3;
 
     if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();

@@ -23,6 +23,7 @@ typedef struct vgp_config_general {
     char  launcher_cmd[VGP_CONFIG_MAX_PATH];
     char  font_path[VGP_CONFIG_MAX_PATH];
     char  screenshot_dir[VGP_CONFIG_MAX_PATH];
+    char  url_handler[VGP_CONFIG_MAX_PATH]; /* command to open URLs, %s = URL */
     char  theme_name[64];              /* theme directory name */
     char  theme_dir[VGP_CONFIG_MAX_PATH]; /* resolved theme directory path */
     float font_size;
@@ -75,7 +76,7 @@ typedef struct vgp_config_lockscreen {
 typedef struct vgp_config_accessibility {
     bool  high_contrast;       /* force high-contrast colors */
     bool  focus_indicator;     /* draw visible focus ring around focused window */
-    float font_scale;          /* global font scale multiplier (1.0 = normal) */
+    float text_size;           /* base vector text render size in points (0 = theme default) */
     bool  reduce_animations;   /* disable/reduce window animations */
     bool  large_cursor;        /* larger cursor size */
 } vgp_config_accessibility_t;
