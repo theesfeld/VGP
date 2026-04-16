@@ -174,14 +174,24 @@ int vgfx_init(vgfx_ctx_t *ctx, const char *title, int width, int height, uint32_
 
     /* Connect to server */
     ctx->conn = vgp_connect(NULL);
-    if (!ctx->conn) { free(ctx->cmd_buf); return -1; }
+    if (!ctx->conn) {
+        fprintf(stderr, "vgfx_init: vgp_connect failed\n");
+        free(ctx->cmd_buf);
+        return -1;
+    }
 
     vgp_set_event_callback(ctx->conn, on_event, ctx);
 
+    /* Don't force DECORATED on override windows */
+    uint32_t win_flags = flags;
+    if (!(flags & VGP_WINDOW_OVERRIDE))
+        win_flags |= VGP_WINDOW_DECORATED | VGP_WINDOW_RESIZABLE;
+
     ctx->window_id = vgp_window_create(ctx->conn, -1, -1,
                                          (uint32_t)width, (uint32_t)height,
-                                         title, flags | VGP_WINDOW_DECORATED | VGP_WINDOW_RESIZABLE);
+                                         title, win_flags);
     if (!ctx->window_id) {
+        fprintf(stderr, "vgfx_init: window_create failed\n");
         vgp_disconnect(ctx->conn);
         free(ctx->cmd_buf);
         return -1;

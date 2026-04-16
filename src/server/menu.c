@@ -14,8 +14,9 @@ void vgp_menu_init(vgp_menu_t *menu)
 
 void vgp_menu_show(vgp_menu_t *menu, float x, float y)
 {
-    menu->x = x;
-    menu->y = y;
+    /* Offset menu slightly so cursor doesn't overlap items */
+    menu->x = x + 2;
+    menu->y = y + 2;
     menu->visible = true;
     menu->hover_idx = -1;
 }

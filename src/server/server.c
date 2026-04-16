@@ -593,6 +593,15 @@ void vgp_server_handle_pointer_motion(vgp_server_t *server, double dx, double dy
         }
     }
 
+    /* Update menu hover state when cursor moves */
+    if (server->desktop_menu.visible || server->window_menu.visible) {
+        int aout = vgp_compositor_output_at_cursor(&server->compositor);
+        float lx = cursor->x - (float)server->compositor.outputs[aout].x;
+        float ly = cursor->y;
+        vgp_menu_hover(&server->desktop_menu, lx, ly);
+        vgp_menu_hover(&server->window_menu, lx, ly);
+    }
+
     /* Focus-follows-mouse: focus window under cursor on movement */
     if (server->config.general.focus_follows_mouse && !grab->active) {
         int32_t cx = (int32_t)cursor->x;
