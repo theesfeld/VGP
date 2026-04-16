@@ -364,17 +364,46 @@ uint32_t vgp_window_create(vgp_connection_t *conn,
     if (send_all(conn->fd, buf, msg_size) < 0)
         return 0;
 
-    /* Wait for WINDOW_CREATED response */
-    /* Temporarily switch to blocking for this read */
+    /* Wait for WINDOW_CREATED response.
+     * The server may send other messages (THEME_INFO) before the response,
+     * so we loop and dispatch non-response messages until we get it. */
     int flags_fd = fcntl(conn->fd, F_GETFL);
     fcntl(conn->fd, F_SETFL, flags_fd & ~O_NONBLOCK);
 
     vgp_msg_window_created_t reply;
-    ssize_t n = recv_msg(conn, &reply, sizeof(reply), 5000);
+    memset(&reply, 0, sizeof(reply));
+    bool got_reply = false;
+    for (int attempts = 0; attempts < 20 && !got_reply; attempts++) {
+        /* Read header first to see the message type */
+        vgp_msg_header_t hdr;
+        ssize_t n = recv_msg(conn, &hdr, sizeof(hdr), 5000);
+        if (n < (ssize_t)sizeof(hdr)) break;
 
-    fcntl(conn->fd, F_SETFL, flags_fd); /* restore */
+        if (hdr.type == VGP_MSG_WINDOW_CREATED && hdr.length >= sizeof(reply)) {
+            /* Got our reply -- read the rest */
+            memcpy(&reply, &hdr, sizeof(hdr));
+            size_t remaining = sizeof(reply) - sizeof(hdr);
+            if (remaining > 0) {
+                n = recv_msg(conn, ((uint8_t*)&reply) + sizeof(hdr), remaining, 1000);
+                if (n < (ssize_t)remaining) break;
+            }
+            got_reply = true;
+        } else {
+            /* Not our reply -- skip past it (drain the body) */
+            size_t body_len = hdr.length > sizeof(hdr) ? hdr.length - sizeof(hdr) : 0;
+            if (body_len > 0 && body_len < 65536) {
+                uint8_t *skip = malloc(body_len);
+                if (skip) {
+                    recv_msg(conn, skip, body_len, 1000);
+                    free(skip);
+                }
+            }
+        }
+    }
 
-    if (n < (ssize_t)sizeof(reply) || reply.header.type != VGP_MSG_WINDOW_CREATED)
+    fcntl(conn->fd, F_SETFL, flags_fd);
+
+    if (!got_reply)
         return 0;
 
     return reply.window_id;
