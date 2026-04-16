@@ -159,12 +159,21 @@ static GLuint link_program(GLuint vs, GLuint fs)
 int vgp_fbo_init(vgp_gpu_state_t *gs, uint32_t width, uint32_t height)
 {
     /* Compile blur shader */
+    VGP_LOG_INFO(TAG, "compiling glass blur shader...");
     GLuint vs = compile_shader(GL_VERTEX_SHADER, blur_vert_src);
     GLuint fs = compile_shader(GL_FRAGMENT_SHADER, blur_frag_src);
-    if (!vs || !fs) return -1;
-    gs->blur_program = link_program(vs, fs);
-    glDeleteShader(vs); glDeleteShader(fs);
-    if (!gs->blur_program) return -1;
+    if (!vs || !fs) {
+        VGP_LOG_ERROR(TAG, "glass shader compile failed (vs=%u fs=%u)", vs, fs);
+        /* FBO still works for capture, just no blur */
+        gs->blur_program = 0;
+    } else {
+        gs->blur_program = link_program(vs, fs);
+        glDeleteShader(vs); glDeleteShader(fs);
+        if (!gs->blur_program)
+            VGP_LOG_ERROR(TAG, "glass shader link failed");
+        else
+            VGP_LOG_INFO(TAG, "glass shader ready (program=%u)", gs->blur_program);
+    }
 
     /* Fullscreen quad VAO */
     float quad[] = {

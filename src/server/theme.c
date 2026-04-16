@@ -10,43 +10,43 @@
 
 void vgp_theme_load_defaults(vgp_theme_t *theme)
 {
-    /* Geometry */
-    theme->titlebar_height = 32.0f;
-    theme->border_width = 2.0f;
-    theme->corner_radius = 8.0f;
-    theme->button_radius = 7.0f;
-    theme->button_spacing = 8.0f;
-    theme->button_margin_right = 12.0f;
+    /* Geometry -- angular MFD style */
+    theme->titlebar_height = 26.0f;
+    theme->border_width = 1.0f;
+    theme->corner_radius = 6.0f;
+    theme->button_radius = 4.0f;
+    theme->button_spacing = 10.0f;
+    theme->button_margin_right = 14.0f;
 
-    /* Dark theme colors */
-    theme->titlebar_active   = vgp_color_hex(0x2D2D2D);
-    theme->titlebar_inactive = vgp_color_hex(0x1E1E1E);
-    theme->border_active     = vgp_color_hex(0x5294E2);
-    theme->border_inactive   = vgp_color_hex(0x3C3C3C);
-    theme->title_text_active   = vgp_color_hex(0xE0E0E0);
-    theme->title_text_inactive = vgp_color_hex(0x808080);
-    theme->close_btn         = vgp_color_hex(0xE06060);
-    theme->maximize_btn      = vgp_color_hex(0x60C060);
-    theme->minimize_btn      = vgp_color_hex(0xE0C040);
-    theme->close_btn_hover   = vgp_color_hex(0xFF4040);
-    theme->background        = vgp_color_hex(0x1A1A2E);
-    theme->statusbar_bg      = vgp_color_hex(0x16213E);
-    theme->statusbar_text    = vgp_color_hex(0xC0C0C0);
-    theme->content_bg        = vgp_color_hex(0x1E1E1E);
+    /* F-16 HUD colors: white/red/yellow on black */
+    theme->titlebar_active   = (vgp_color_t){0.04f, 0.04f, 0.05f, 0.10f}; /* barely-visible glass */
+    theme->titlebar_inactive = (vgp_color_t){0.03f, 0.03f, 0.04f, 0.07f};
+    theme->border_active     = vgp_color_hex(0xFFD700); /* yellow accent */
+    theme->border_inactive   = vgp_color_hex(0x444444);
+    theme->title_text_active   = vgp_color_hex(0xEEEEDD); /* bright white */
+    theme->title_text_inactive = vgp_color_hex(0x666666);
+    theme->close_btn         = vgp_color_hex(0xCCCCCC); /* white, red on hover */
+    theme->maximize_btn      = vgp_color_hex(0xCCCCCC);
+    theme->minimize_btn      = vgp_color_hex(0xCCCCCC);
+    theme->close_btn_hover   = vgp_color_hex(0xFF3333);
+    theme->background        = vgp_color_hex(0x000000); /* pure black */
+    theme->statusbar_bg      = (vgp_color_t){0.03f, 0.03f, 0.04f, 0.08f}; /* glass */
+    theme->statusbar_text    = vgp_color_hex(0xEEEEDD);
+    theme->content_bg        = (vgp_color_t){0.02f, 0.02f, 0.03f, 0.88f}; /* dark readability */
 
     /* Font sizes */
-    theme->title_font_size = 14.0f;
-    theme->statusbar_font_size = 13.0f;
-    theme->statusbar_height = 28.0f;
+    theme->title_font_size = 12.0f;
+    theme->statusbar_font_size = 11.0f;
+    theme->statusbar_height = 24.0f;
 
     /* Background */
     theme->background_mode = 1; /* shader by default */
     theme->background_shader[0] = '\0';
     theme->background_wallpaper[0] = '\0';
 
-    /* Window transparency */
-    theme->window_opacity = 0.9f;
-    theme->inactive_opacity = 0.85f;
+    /* Window transparency -- glass panes */
+    theme->window_opacity = 0.95f;
+    theme->inactive_opacity = 0.90f;
 
     VGP_LOG_INFO(TAG, "loaded default theme");
 }

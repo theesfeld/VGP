@@ -97,78 +97,71 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
     float x = (float)f->x, y = (float)f->y;
     float w = (float)f->w, h = (float)f->h;
     float th = theme->titlebar_height;
-    float cr = theme->corner_radius > 0 ? theme->corner_radius : 10.0f;
+    float cr = theme->corner_radius > 0 ? theme->corner_radius : 6.0f;
+    float fs = theme->title_font_size;
 
-    float edge_alpha = focused ? 0.25f : 0.12f;
+    /* === HUD GLASS PANE ===
+     * Barely visible. You see through it.
+     * Like an F-16 HUD combiner -- the glass itself is almost invisible.
+     * Content is PROJECTED onto it (bright, crisp). */
 
-    /* === Plexiglass pane ===
-     * Translucent glass -- the background shows through.
-     * Very subtle tint, barely visible surface.
-     * FBO blur drawn in separate pass provides the actual blur;
-     * this fill is the glass material on top. */
+    /* Glass pane: near-invisible tint */
+    const vgp_color_t *tb = focused ? &theme->titlebar_active : &theme->titlebar_inactive;
     b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
-                               0.08f, 0.08f, 0.10f, focused ? 0.65f : 0.55f);
+                               tb->r, tb->g, tb->b, tb->a);
 
-    /* Glass edge highlight (top-left light source) */
-    b->ops->draw_rounded_rect(b, ctx, x, y, w, 1.5f, cr,
-                               1.0f, 1.0f, 1.0f, edge_alpha);
-    b->ops->draw_rounded_rect(b, ctx, x, y, 1.5f, h, cr,
-                               1.0f, 1.0f, 1.0f, edge_alpha * 0.5f);
-
-    /* Glass edge shadow (bottom-right) */
-    b->ops->draw_rounded_rect(b, ctx, x, y + h - 1.5f, w, 1.5f, cr,
-                               0.0f, 0.0f, 0.0f, edge_alpha);
-    b->ops->draw_rounded_rect(b, ctx, x + w - 1.5f, y, 1.5f, h, cr,
-                               0.0f, 0.0f, 0.0f, edge_alpha * 0.5f);
-
-    /* Content area: very subtle dark tint for readability */
+    /* Content area: dark for readability, slightly more opaque */
     const vgp_color_t *cb = &theme->content_bg;
-    b->ops->draw_rounded_rect(b, ctx, x + 2, y + th, w - 4, h - th - 2, cr > 2 ? cr - 2 : 1,
-                               cb->r, cb->g, cb->b, focused ? 0.85f : 0.75f);
+    b->ops->draw_rounded_rect(b, ctx, x + 1, y + th, w - 2, h - th - 1,
+                               cr > 1 ? cr - 1 : 1,
+                               cb->r, cb->g, cb->b, cb->a);
 
-    /* === Etched title text ===
-     * "Etched into glass" = dark shadow below, bright text on top.
-     * Like a manufacturer mark pressed into the surface. */
+    /* Single thin border line -- like MFD bezel edge */
+    float border_alpha = focused ? 0.35f : 0.15f;
+    const vgp_color_t *bc = focused ? &theme->border_active : &theme->border_inactive;
+    b->ops->draw_line(b, ctx, x + cr, y, x + w - cr, y, 1.0f,
+                       bc->r, bc->g, bc->b, border_alpha);
+    b->ops->draw_line(b, ctx, x + cr, y + h, x + w - cr, y + h, 1.0f,
+                       bc->r, bc->g, bc->b, border_alpha);
+    b->ops->draw_line(b, ctx, x, y + cr, x, y + h - cr, 1.0f,
+                       bc->r, bc->g, bc->b, border_alpha);
+    b->ops->draw_line(b, ctx, x + w, y + cr, x + w, y + h - cr, 1.0f,
+                       bc->r, bc->g, bc->b, border_alpha);
+
+    /* Titlebar separator line */
+    b->ops->draw_line(b, ctx, x + 4, y + th, x + w - 4, y + th, 0.5f,
+                       bc->r, bc->g, bc->b, border_alpha * 0.5f);
+
+    /* === PROJECTED TITLE TEXT ===
+     * Bright, crisp, like projected onto glass. No shadows. */
     if (win->title[0]) {
-        float text_x = x + 12.0f;
-        float text_y = y + th / 2.0f + theme->title_font_size / 3.0f;
-        float fs = theme->title_font_size;
-
-        /* Shadow (etched groove -- darker, offset down-right) */
-        b->ops->draw_text(b, ctx, win->title, -1, text_x + 1, text_y + 1, fs,
-                           0.0f, 0.0f, 0.0f, focused ? 0.5f : 0.3f);
-        /* Highlight (etched ridge -- brighter, offset up-left) */
-        b->ops->draw_text(b, ctx, win->title, -1, text_x - 0.5f, text_y - 0.5f, fs,
-                           1.0f, 1.0f, 1.0f, focused ? 0.15f : 0.08f);
-        /* Main text */
+        float text_x = x + 10.0f;
+        float text_y = y + th * 0.5f + fs * 0.35f;
         const vgp_color_t *tc = focused ? &theme->title_text_active
                                         : &theme->title_text_inactive;
         b->ops->draw_text(b, ctx, win->title, -1, text_x, text_y, fs,
-                           tc->r, tc->g, tc->b, focused ? 0.7f : 0.4f);
+                           tc->r, tc->g, tc->b, focused ? 0.9f : 0.5f);
     }
 
-    /* === Window control dots (small, subtle, etched into glass) === */
-    float btn_r = 4.0f;
-    float btn_spacing = 10.0f;
-    float btn_cy = y + th / 2.0f;
+    /* === CONTROL BUTTONS (small circles, MFD style) === */
+    float btn_r = theme->button_radius;
+    float btn_spacing = theme->button_spacing;
+    float btn_cy = y + th * 0.5f;
 
-    /* Close */
-    float close_cx = x + w - 16 - btn_r;
-    b->ops->draw_circle(b, ctx, close_cx + 0.5f, btn_cy + 0.5f, btn_r, 0, 0, 0, 0.3f);
+    /* Close -- white circle, X inside */
+    float close_cx = x + w - 14 - btn_r;
     b->ops->draw_circle(b, ctx, close_cx, btn_cy, btn_r,
                          theme->close_btn.r, theme->close_btn.g,
-                         theme->close_btn.b, focused ? 0.8f : 0.4f);
+                         theme->close_btn.b, focused ? 0.6f : 0.25f);
 
     /* Maximize */
     float max_cx = close_cx - btn_r * 2 - btn_spacing;
-    b->ops->draw_circle(b, ctx, max_cx + 0.5f, btn_cy + 0.5f, btn_r, 0, 0, 0, 0.3f);
     b->ops->draw_circle(b, ctx, max_cx, btn_cy, btn_r,
                          theme->maximize_btn.r, theme->maximize_btn.g,
-                         theme->maximize_btn.b, focused ? 0.8f : 0.4f);
+                         theme->maximize_btn.b, focused ? 0.4f : 0.2f);
 
     /* Minimize */
     float min_cx = max_cx - btn_r * 2 - btn_spacing;
-    b->ops->draw_circle(b, ctx, min_cx + 0.5f, btn_cy + 0.5f, btn_r, 0, 0, 0, 0.3f);
     b->ops->draw_circle(b, ctx, min_cx, btn_cy, btn_r,
                          theme->minimize_btn.r, theme->minimize_btn.g,
                          theme->minimize_btn.b, focused ? 0.8f : 0.4f);
@@ -985,27 +978,16 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
         /* Skip if fully transparent */
         if (win_opacity < 0.01f) continue;
 
-        /* Soft shadow under glass pane */
+        /* Subtle shadow under glass pane */
         if (win->decorated) {
-            float cr = theme->corner_radius > 0 ? theme->corner_radius : 10.0f;
-            float sh_offset = 4.0f;
-            float sh_spread = 16.0f;
-            float sh_alpha = 0.2f * win_opacity;
-            /* Outer diffuse shadow */
+            float s_cr = theme->corner_radius > 0 ? theme->corner_radius : 6.0f;
+            float sh_alpha = 0.15f * win_opacity;
             b->ops->draw_rounded_rect(b, ctx,
-                (float)tmp.frame_rect.x - sh_spread + sh_offset,
-                (float)tmp.frame_rect.y - sh_spread + sh_offset,
-                (float)tmp.frame_rect.w + sh_spread * 2,
-                (float)tmp.frame_rect.h + sh_spread * 2,
-                cr + sh_spread * 0.5f,
-                0, 0, 0, sh_alpha * 0.5f);
-            /* Inner sharper shadow */
-            b->ops->draw_rounded_rect(b, ctx,
-                (float)tmp.frame_rect.x - 4 + sh_offset,
-                (float)tmp.frame_rect.y - 4 + sh_offset,
-                (float)tmp.frame_rect.w + 8,
-                (float)tmp.frame_rect.h + 8,
-                cr + 2,
+                (float)tmp.frame_rect.x + 3,
+                (float)tmp.frame_rect.y + 3,
+                (float)tmp.frame_rect.w,
+                (float)tmp.frame_rect.h,
+                s_cr,
                 0, 0, 0, sh_alpha);
         }
 
