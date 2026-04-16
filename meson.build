@@ -96,6 +96,7 @@ vgp_server_sources = files(
   'src/server/arena.c',
   'src/server/pool.c',
   'src/server/panel.c',
+  'src/server/fbo_compose.c',
   'src/libvgp-gfx/vgp-stroke-font.c',
 )
 

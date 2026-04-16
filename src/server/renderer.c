@@ -9,6 +9,7 @@
 #include "config.h"
 #include "panel.h"
 #include "vgp-stroke-font.h"
+#include "fbo_compose.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
 
@@ -102,10 +103,30 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
     float edge_alpha = focused ? 0.25f : 0.12f;
 
     /* === Plexiglass pane ===
-     * Semi-transparent rounded rectangle -- the "glass" itself.
-     * Content shows through. No solid fill. */
-    b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
-                               0.5f, 0.5f, 0.55f, glass_alpha);
+     * Translucent glass with blurred/distorted background visible through it.
+     * Uses FBO compositing for photorealistic diffusion when available. */
+#ifdef VGP_HAS_GPU_BACKEND
+    if (b->type == VGP_BACKEND_GPU) {
+        vgp_gpu_state_t *gs = b->priv;
+        if (gs->fbo_initialized) {
+            /* End NanoVG to flush, draw glass blur via raw GL, restart NanoVG */
+            nvgEndFrame(ctx);
+            vgp_fbo_draw_blur_rect(gs, x, y, w, h, cr,
+                                     6.0f,  /* blur radius */
+                                     0.15f, 0.15f, 0.18f, 0.12f, /* subtle cool tint */
+                                     gs->fbo_width, gs->fbo_height);
+            nvgBeginFrame(ctx, gs->cur_width, gs->cur_height, 1.0f);
+        } else {
+            /* Fallback: flat translucent fill */
+            b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
+                                       0.5f, 0.5f, 0.55f, glass_alpha);
+        }
+    } else
+#endif
+    {
+        b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
+                                   0.5f, 0.5f, 0.55f, glass_alpha);
+    }
 
     /* Glass edge highlight (top-left light source) */
     b->ops->draw_rounded_rect(b, ctx, x, y, w, 1.5f, cr,
@@ -761,19 +782,22 @@ int vgp_renderer_init(vgp_renderer_t *renderer, vgp_drm_backend_t *drm,
                 renderer->shader_panel = vgp_shader_load(smgr, path_buf);
             }
 
-            /* Overlay shader (rain, post-effects) */
-            if (home) {
-                snprintf(path_buf, sizeof(path_buf),
-                         "%s/.config/vgp/shaders/rain.frag", home);
-                renderer->shader_overlay = vgp_shader_load(smgr, path_buf);
-            }
+            /* Overlay shader slot reserved for future FBO post-process */
         }
     }
 #endif
 
-    VGP_LOG_INFO(TAG, "renderer initialized (bg=%d, panel=%d, overlay=%d)",
-                 renderer->shader_background, renderer->shader_panel,
-                 renderer->shader_overlay);
+    /* Initialize FBO compositing pipeline for glass effects */
+#ifdef VGP_HAS_GPU_BACKEND
+    if (renderer->backend->type == VGP_BACKEND_GPU) {
+        vgp_gpu_state_t *gs = renderer->backend->priv;
+        if (drm->output_count > 0)
+            vgp_fbo_init(gs, drm->outputs[0].width, drm->outputs[0].height);
+    }
+#endif
+
+    VGP_LOG_INFO(TAG, "renderer initialized (bg=%d, panel=%d)",
+                 renderer->shader_background, renderer->shader_panel);
     return 0;
 }
 
@@ -858,6 +882,20 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
         /* Shift everything left by the output's x offset so windows
          * on this output appear at the correct position */
     }
+
+    /* Capture scene to FBO for glass blur effects */
+#ifdef VGP_HAS_GPU_BACKEND
+    if (b->type == VGP_BACKEND_GPU) {
+        vgp_gpu_state_t *gs = b->priv;
+        if (gs->fbo_initialized) {
+            /* End NanoVG frame temporarily to flush GL state */
+            nvgEndFrame(ctx);
+            vgp_fbo_capture(gs, output->width, output->height);
+            vgp_fbo_resize(gs, output->width, output->height);
+            nvgBeginFrame(ctx, (float)output->width, (float)output->height, 1.0f);
+        }
+    }
+#endif
 
     /* Layer 1: Windows on this workspace */
     for (int i = 0; i < comp->window_count; i++) {
@@ -982,41 +1020,6 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
     /* Layer 2: Panel */
     vgp_panel_render(b, ctx, theme, panel_cfg,
                       output->width, output->height, workspace, comp);
-
-    /* Layer 2b: Overlay shader (rain, post-effects) */
-#ifdef VGP_HAS_GPU_BACKEND
-    if (renderer->shader_overlay >= 0 && b->type == VGP_BACKEND_GPU) {
-        vgp_gpu_state_t *gs = b->priv;
-        vgp_shader_mgr_t *smgr = gs->shader_mgr;
-        if (smgr) {
-            /* Collect focused window rect for the shader */
-            vgp_shader_windows_t wins = {0};
-            /* First window = focused window */
-            if (comp->focused && comp->focused->visible &&
-                comp->focused->workspace == workspace) {
-                vgp_window_t *fw = comp->focused;
-                wins.rects[0] = (float)(fw->frame_rect.x - out_x);
-                wins.rects[1] = (float)fw->frame_rect.y;
-                wins.rects[2] = (float)fw->frame_rect.w;
-                wins.rects[3] = (float)fw->frame_rect.h;
-                wins.count = 1;
-            }
-
-            nvgEndFrame(ctx);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            vgp_shader_render(smgr, renderer->shader_overlay,
-                               0, 0, (float)output->width, (float)output->height,
-                               (float)output->width, (float)output->height,
-                               theme->background.r, theme->background.g,
-                               theme->background.b, theme->background.a,
-                               theme->border_active.r, theme->border_active.g,
-                               theme->border_active.b, theme->border_active.a,
-                               local_mouse_x, local_mouse_y, &wins);
-            nvgBeginFrame(ctx, (float)output->width, (float)output->height, 1.0f);
-        }
-    }
-#endif
 
     /* Layer 3: Cursor (only on the output where the cursor is) */
     {
