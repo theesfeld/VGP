@@ -7,3 +7,4 @@ subprojects/plutovg/
 *.log
 .claude/
 CLAUDE.md
+subprojects/nanovg/
