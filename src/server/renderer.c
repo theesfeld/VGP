@@ -418,6 +418,15 @@ static void render_drawcmds(vgp_render_backend_t *b, void *ctx,
             }
             off += 48; break;
 
+        case VGP_DCMD_TRANSFORM:
+#ifdef VGP_HAS_GPU_BACKEND
+            if (b->type == VGP_BACKEND_GPU) {
+                NVGcontext *vg = ctx;
+                nvgTransform(vg, f[0], f[1], f[2], f[3], f[4], f[5]);
+            }
+#endif
+            off += 24; break;
+
         default:
             /* Unknown opcode -- bail to prevent reading garbage */
             off = len;
@@ -906,8 +915,31 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                 0, 0, 0, sh_alpha);
         }
 
-        /* Render with opacity */
+        /* Render with opacity + 3D transform */
         b->ops->push_state(b, ctx);
+
+        /* Apply window 3D rotation/deform as 2D affine transform */
+#ifdef VGP_HAS_GPU_BACKEND
+        if (b->type == VGP_BACKEND_GPU &&
+            (win->rot_x != 0 || win->rot_y != 0 || win->rot_z != 0 ||
+             win->deform_x != 0 || win->deform_y != 0)) {
+            NVGcontext *vg = ctx;
+            float cx = (float)tmp.frame_rect.x + (float)tmp.frame_rect.w * 0.5f;
+            float cy = (float)tmp.frame_rect.y + (float)tmp.frame_rect.h * 0.5f;
+            nvgSave(vg);
+            nvgTranslate(vg, cx, cy);
+            /* Z rotation */
+            if (win->rot_z != 0) nvgRotate(vg, win->rot_z);
+            /* X/Y rotation approximated as skew for 2D perspective */
+            if (win->rot_y != 0) nvgSkewY(vg, win->rot_y * 0.3f);
+            if (win->rot_x != 0) nvgSkewX(vg, win->rot_x * 0.3f);
+            /* Deformation from drag */
+            if (win->deform_x != 0 || win->deform_y != 0)
+                nvgSkewX(vg, win->deform_x * 0.002f);
+            nvgTranslate(vg, -cx, -cy);
+        }
+#endif
+
         render_decoration(b, ctx, &tmp, theme, win == comp->focused);
         render_window_content(b, ctx, win, out_x);
 
@@ -924,6 +956,16 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
             b->ops->draw_rect(b, ctx, fx, fy, fi_w, fh, 1.0f, 0.8f, 0.0f, 0.9f);             /* left */
             b->ops->draw_rect(b, ctx, fx + fw - fi_w, fy, fi_w, fh, 1.0f, 0.8f, 0.0f, 0.9f); /* right */
         }
+
+        /* Restore 3D transform if applied */
+#ifdef VGP_HAS_GPU_BACKEND
+        if (b->type == VGP_BACKEND_GPU &&
+            (win->rot_x != 0 || win->rot_y != 0 || win->rot_z != 0 ||
+             win->deform_x != 0 || win->deform_y != 0)) {
+            NVGcontext *vg = ctx;
+            nvgRestore(vg);
+        }
+#endif
 
         b->ops->pop_state(b, ctx);
     }

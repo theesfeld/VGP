@@ -5,6 +5,7 @@
 #include "vgp/protocol.h"
 
 #include <string.h>
+#include <math.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -198,7 +199,52 @@ static void statusbar_tick(void *data)
 static void animation_tick(void *data)
 {
     vgp_server_t *server = data;
-    vgp_renderer_schedule_frame(&server->renderer);
+
+    /* Window physics: apply velocity, friction, spring-back */
+    float friction = 0.97f;
+    float spring = 0.1f;
+    bool any_active = false;
+    for (int i = 0; i < VGP_MAX_WINDOWS; i++) {
+        vgp_window_t *w = &server->compositor.windows[i];
+        if (!w->used) continue;
+
+        /* Integrate angular velocity */
+        if (w->vel_x != 0 || w->vel_y != 0 || w->vel_z != 0) {
+            w->rot_x += w->vel_x;
+            w->rot_y += w->vel_y;
+            w->rot_z += w->vel_z;
+            /* Friction decay */
+            w->vel_x *= friction;
+            w->vel_y *= friction;
+            w->vel_z *= friction;
+            /* Stop when very slow */
+            if (fabsf(w->vel_x) < 0.0001f) w->vel_x = 0;
+            if (fabsf(w->vel_y) < 0.0001f) w->vel_y = 0;
+            if (fabsf(w->vel_z) < 0.0001f) w->vel_z = 0;
+            any_active = true;
+        }
+
+        /* Deform spring-back */
+        if (w->deform_x != 0 || w->deform_y != 0) {
+            w->deform_x *= (1.0f - spring);
+            w->deform_y *= (1.0f - spring);
+            if (fabsf(w->deform_x) < 0.5f) w->deform_x = 0;
+            if (fabsf(w->deform_y) < 0.5f) w->deform_y = 0;
+            any_active = true;
+        }
+
+        /* Rotation spring-back (slowly return to neutral) */
+        if (w->vel_x == 0 && w->vel_y == 0 && w->vel_z == 0) {
+            if (w->rot_x != 0) { w->rot_x *= 0.95f; if (fabsf(w->rot_x) < 0.001f) w->rot_x = 0; any_active = true; }
+            if (w->rot_y != 0) { w->rot_y *= 0.95f; if (fabsf(w->rot_y) < 0.001f) w->rot_y = 0; any_active = true; }
+            if (w->rot_z != 0) { w->rot_z *= 0.95f; if (fabsf(w->rot_z) < 0.001f) w->rot_z = 0; any_active = true; }
+        }
+    }
+
+    if (any_active)
+        vgp_renderer_schedule_frame(&server->renderer);
+    else
+        vgp_renderer_schedule_frame(&server->renderer); /* still needed for shader animation */
 }
 
 int vgp_server_init(vgp_server_t *server, const char *config_path)
@@ -552,11 +598,20 @@ void vgp_server_handle_pointer_motion(vgp_server_t *server, double dx, double dy
     /* Handle active grab (window move/resize) */
     vgp_grab_t *grab = &server->compositor.grab;
     if (grab->active && grab->target) {
+        uint32_t drag_mods = vgp_keyboard_get_modifiers(&server->keyboard);
         if (grab->region == VGP_HIT_TITLEBAR) {
-            int32_t new_x = grab->grab_rect.x + (int32_t)(cursor->x - (float)grab->grab_x);
-            int32_t new_y = grab->grab_rect.y + (int32_t)(cursor->y - (float)grab->grab_y);
-            vgp_compositor_move_window(&server->compositor, grab->target,
-                                        new_x, new_y, &server->config.theme);
+            if (drag_mods & VGP_MOD_SUPER) {
+                /* Super+drag: deform window (pinch/stretch) */
+                float dx = cursor->x - (float)grab->grab_x;
+                float dy = cursor->y - (float)grab->grab_y;
+                grab->target->deform_x = dx;
+                grab->target->deform_y = dy;
+            } else {
+                int32_t new_x = grab->grab_rect.x + (int32_t)(cursor->x - (float)grab->grab_x);
+                int32_t new_y = grab->grab_rect.y + (int32_t)(cursor->y - (float)grab->grab_y);
+                vgp_compositor_move_window(&server->compositor, grab->target,
+                                            new_x, new_y, &server->config.theme);
+            }
         } else if (grab->region >= VGP_HIT_BORDER_N &&
                    grab->region <= VGP_HIT_BORDER_SW) {
             int32_t dx_i = (int32_t)(cursor->x - (float)grab->grab_x);
@@ -667,7 +722,35 @@ void vgp_server_handle_pointer_button(vgp_server_t *server,
             }
         }
 
-        /* Right-click: show context menu */
+        /* Super+Right-click: spin window around axis based on click position */
+        if (button == 0x111 && !grab->active) { /* BTN_RIGHT */
+            uint32_t mods = vgp_keyboard_get_modifiers(&server->keyboard);
+            if (mods & VGP_MOD_SUPER) {
+                int32_t cx = (int32_t)cursor->x, cy = (int32_t)cursor->y;
+                vgp_window_t *win = vgp_compositor_window_at(&server->compositor, cx, cy);
+                if (win) {
+                    /* Compute vector from window center to click point */
+                    float wcx = (float)win->frame_rect.x + (float)win->frame_rect.w * 0.5f;
+                    float wcy = (float)win->frame_rect.y + (float)win->frame_rect.h * 0.5f;
+                    float dx = cursor->x - wcx;
+                    float dy = cursor->y - wcy;
+                    /* Normalize */
+                    float len = sqrtf(dx*dx + dy*dy);
+                    if (len > 1.0f) { dx /= len; dy /= len; }
+                    /* Spin axis is perpendicular to the click vector.
+                     * dx,dy -> spin axis is (-dy, dx) in 2D, mapped to 3D rot:
+                     * X-axis spin from vertical component, Y-axis from horizontal */
+                    float impulse = 0.08f; /* base angular impulse */
+                    win->vel_x += -dy * impulse;
+                    win->vel_y += dx * impulse;
+                    win->vel_z += 0.02f; /* slight Z spin for visual interest */
+                    vgp_renderer_schedule_frame(&server->renderer);
+                    goto button_done;
+                }
+            }
+        }
+
+        /* Right-click: show context menu (only without Super) */
         if (button == 0x111 && !grab->active) { /* BTN_RIGHT */
             int32_t cx = (int32_t)cursor->x;
             int32_t cy = (int32_t)cursor->y;

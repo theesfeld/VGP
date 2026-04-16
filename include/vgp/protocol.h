@@ -218,6 +218,7 @@ typedef enum {
     VGP_DCMD_RRECT_OUTLINE = 0x0B,  /* x,y,w,h,radius,line_w,r,g,b,a (10f = 40B) */
     VGP_DCMD_TEXT_BOLD     = 0x0C,  /* same as TEXT */
     VGP_DCMD_GRADIENT_RECT = 0x0E,  /* x,y,w,h,r1,g1,b1,a1,r2,g2,b2,a2 (12f = 48B) */
+    VGP_DCMD_TRANSFORM     = 0x0F,  /* 2D affine: a,b,c,d,e,f (6f = 24B) */
 } vgp_dcmd_opcode_t;
 
 /* Draw commands message header */

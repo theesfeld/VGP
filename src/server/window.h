@@ -81,6 +81,12 @@ typedef struct vgp_window {
     size_t             draw_cmds_len;    /* byte length of command data */
     uint32_t           draw_cmd_count;
     bool               has_drawcmds;
+
+    /* 3D transform (physics-based rotation/spin) */
+    float              rot_x, rot_y, rot_z;     /* current rotation radians */
+    float              vel_x, vel_y, vel_z;     /* angular velocity rad/frame */
+    float              deform_x, deform_y;      /* skew deformation from drag */
+    float              transform_scale;         /* scale factor (1.0 = normal) */
 } vgp_window_t;
 
 /* Compute content rect from frame rect using theme decoration sizes */
