@@ -78,8 +78,11 @@ void vgp_hotreload_dispatch(vgp_hotreload_t *hr, struct vgp_server *server)
     }
 
     if (theme_changed) {
-        VGP_LOG_INFO(TAG, "theme changed, reloading config");
+        VGP_LOG_INFO(TAG, "theme changed, reloading config + broadcasting to clients");
         vgp_config_load(&server->config, server->config.config_path);
+        /* Broadcast updated theme to all connected clients */
+        extern void vgp_server_broadcast_theme(struct vgp_server *server);
+        vgp_server_broadcast_theme(server);
         vgp_renderer_schedule_frame(&server->renderer);
     }
 

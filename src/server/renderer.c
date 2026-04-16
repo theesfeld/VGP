@@ -8,6 +8,7 @@
 #include "calendar.h"
 #include "config.h"
 #include "panel.h"
+#include "vgp-stroke-font.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
 
@@ -311,11 +312,30 @@ static void render_drawcmds(vgp_render_backend_t *b, void *ctx,
         case VGP_DCMD_TEXT:
         case VGP_DCMD_TEXT_BOLD: {
             float tx = f[0]+ox, ty = f[1]+oy, sz = f[2];
-            float r = f[3], g = f[4], bl = f[5], a = f[6];
+            float cr = f[3], cg = f[4], cb = f[5], ca = f[6];
             uint16_t tlen;
             memcpy(&tlen, buf + off + 28, 2);
             const char *text = (const char *)(buf + off + 30);
-            b->ops->draw_text(b, ctx, text, tlen, tx, ty, sz, r, g, bl, a);
+            float lw = (op == VGP_DCMD_TEXT_BOLD) ? 2.0f : 1.2f;
+            /* Scale from grid coordinates to pixel size */
+            float scale = sz / (float)STROKE_GRID_H;
+            float advance = ((float)STROKE_GRID_W + 1.0f) * scale;
+            float cursor_x = tx;
+            /* ty is baseline -- glyphs render from top, so offset up by sz */
+            float glyph_y = ty - sz;
+            for (uint16_t ci = 0; ci < tlen && text[ci]; ci++) {
+                const stroke_glyph_t *g = stroke_font_glyph((int)(unsigned char)text[ci]);
+                for (int si = 0; si < STROKE_MAX_SEG; si++) {
+                    const stroke_seg_t *s = &g->segs[si];
+                    if (s->x1 == STROKE_END) break;
+                    float x1 = cursor_x + (float)s->x1 * scale;
+                    float y1 = glyph_y + (float)s->y1 * scale;
+                    float x2 = cursor_x + (float)s->x2 * scale;
+                    float y2 = glyph_y + (float)s->y2 * scale;
+                    b->ops->draw_line(b, ctx, x1, y1, x2, y2, lw, cr, cg, cb, ca);
+                }
+                cursor_x += advance;
+            }
             off += 30 + tlen;
             break;
         }
@@ -345,25 +365,49 @@ static void render_drawcmds(vgp_render_backend_t *b, void *ctx,
             off += 36; break;
 
         case VGP_DCMD_RRECT_OUTLINE:
-            /* Approximate with a slightly larger filled rrect then inner rrect */
-            {
+#ifdef VGP_HAS_GPU_BACKEND
+            if (b->type == VGP_BACKEND_GPU) {
                 float x=f[0]+ox, y=f[1]+oy, w=f[2], h=f[3], rad=f[4], lw=f[5];
                 float cr=f[6], cg=f[7], cb=f[8], ca=f[9];
-                /* Outer fill */
-                b->ops->draw_rounded_rect(b, ctx, x, y, w, h, rad, cr, cg, cb, ca);
-                /* Inner clear (using the content bg -- approximation) */
-                /* For true outline, we'd need NanoVG stroke. For now, skip inner. */
-                (void)lw;
+                NVGcontext *vg = ctx;
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, x, y, w, h, rad);
+                nvgStrokeColor(vg, nvgRGBAf(cr, cg, cb, ca));
+                nvgStrokeWidth(vg, lw);
+                nvgStroke(vg);
+            } else
+#endif
+            {
+                float x=f[0]+ox, y=f[1]+oy, w=f[2], h=f[3], lw=f[5];
+                float cr=f[6], cg=f[7], cb=f[8], ca=f[9];
+                b->ops->draw_rect(b, ctx, x, y, w, lw, cr, cg, cb, ca);
+                b->ops->draw_rect(b, ctx, x, y+h-lw, w, lw, cr, cg, cb, ca);
+                b->ops->draw_rect(b, ctx, x, y, lw, h, cr, cg, cb, ca);
+                b->ops->draw_rect(b, ctx, x+w-lw, y, lw, h, cr, cg, cb, ca);
             }
             off += 40; break;
 
         case VGP_DCMD_GRADIENT_RECT:
-            /* Approximate gradient with 8 horizontal bands */
+#ifdef VGP_HAS_GPU_BACKEND
+            if (b->type == VGP_BACKEND_GPU) {
+                float x=f[0]+ox, y=f[1]+oy, w=f[2], h=f[3];
+                float r1=f[4],g1=f[5],b1=f[6],a1=f[7];
+                float r2=f[8],g2=f[9],b2=f[10],a2=f[11];
+                NVGcontext *vg = ctx;
+                NVGpaint paint = nvgLinearGradient(vg, x, y, x, y+h,
+                                                     nvgRGBAf(r1,g1,b1,a1),
+                                                     nvgRGBAf(r2,g2,b2,a2));
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, w, h);
+                nvgFillPaint(vg, paint);
+                nvgFill(vg);
+            } else
+#endif
             {
                 float x=f[0]+ox, y=f[1]+oy, w=f[2], h=f[3];
                 float r1=f[4],g1=f[5],b1=f[6],a1=f[7];
                 float r2=f[8],g2=f[9],b2=f[10],a2=f[11];
-                int bands = 8;
+                int bands = 16;
                 float bh = h / (float)bands;
                 for (int i = 0; i < bands; i++) {
                     float t = (float)i / (float)(bands - 1);

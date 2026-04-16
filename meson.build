@@ -55,6 +55,7 @@ endif
 # ============================================================
 
 vgp_inc = include_directories('include', 'src')
+vgp_gfx_inc = include_directories('src/libvgp-gfx')
 
 # ============================================================
 # VGP Server
@@ -95,6 +96,7 @@ vgp_server_sources = files(
   'src/server/arena.c',
   'src/server/pool.c',
   'src/server/panel.c',
+  'src/libvgp-gfx/vgp-stroke-font.c',
 )
 
 # Add GPU backend sources if available
@@ -113,7 +115,7 @@ endif
 
 executable('vgp',
   vgp_server_sources,
-  include_directories : [vgp_inc, nanovg_inc],
+  include_directories : [vgp_inc, nanovg_inc, vgp_gfx_inc],
   dependencies : [
     dep_drm,
     dep_input,
@@ -165,8 +167,6 @@ dep_vgp_ui = declare_dependency(
 # ============================================================
 # Graphical UI library for VGP apps (draw commands, GPU)
 # ============================================================
-
-vgp_gfx_inc = include_directories('src/libvgp-gfx')
 
 libvgp_gfx = static_library('vgp-gfx',
   files('src/libvgp-gfx/vgp-gfx.c', 'src/libvgp-gfx/vgp-gfx-widgets.c'),
@@ -241,7 +241,7 @@ executable('vgp-settings',
 executable('vgp-monitor',
   files('src/vgp-monitor/main.c'),
   include_directories : [vgp_inc, vgp_gfx_inc],
-  dependencies : [dep_vgp_gfx],
+  dependencies : [dep_vgp_gfx, dep_math],
   install : true,
 )
 

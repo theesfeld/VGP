@@ -386,17 +386,13 @@ vgfx_color_t vgfx_theme_color(vgfx_ctx_t *ctx, int slot)
 
 float vgfx_text_width(vgfx_ctx_t *ctx, const char *text, int len, float size)
 {
-    float scale = size / (ctx->theme.font_size > 0 ? ctx->theme.font_size : 14.0f);
-    float w = 0;
+    (void)ctx;
+    /* Stroke font: every character is monospace on a 5x7 grid.
+     * Advance = (grid_width + 1) * scale, where scale = size / grid_height */
+    float scale = size / 7.0f;
+    float advance = 6.0f * scale;  /* 5 + 1 spacing */
     int n = len < 0 ? (int)strlen(text) : len;
-    for (int i = 0; i < n && text[i]; i++) {
-        int c = (unsigned char)text[i];
-        if (c >= 32 && c <= 126)
-            w += ctx->theme.char_advances[c - 32] * scale;
-        else
-            w += ctx->theme.char_advances['M' - 32] * scale;
-    }
-    return w;
+    return (float)n * advance;
 }
 
 float vgfx_text_height(vgfx_ctx_t *ctx, float size)
