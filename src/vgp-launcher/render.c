@@ -4,135 +4,84 @@
 
 void launcher_render(launcher_t *l)
 {
-    float w = LAUNCHER_WIDTH, h = LAUNCHER_HEIGHT;
-    float pad = l->padding;
-    float item_h = l->item_height;
-    float input_h = 36.0f;
+    vgfx_ctx_t *ctx = &l->ctx;
+    float w = ctx->width, h = ctx->height;
+    float p = ctx->theme.padding;
+    float fs = ctx->theme.font_size;
 
-    /* Clear */
-    plutovg_color_t bg;
-    plutovg_color_init_rgba(&bg, 0.08f, 0.08f, 0.12f, 0.97f);
-    plutovg_surface_clear(l->surface, &bg);
-
-    /* Border */
-    plutovg_canvas_set_rgba(l->canvas, 0.32f, 0.53f, 0.88f, 0.8f);
-    plutovg_canvas_round_rect(l->canvas, 1, 1, w - 2, h - 2, 12, 12);
-    plutovg_canvas_set_line_width(l->canvas, 2.0f);
-    plutovg_canvas_stroke(l->canvas);
+    /* Background with slight transparency */
+    vgfx_clear(ctx, vgfx_theme_color(ctx, VGP_THEME_BG));
+    vgfx_rounded_rect_outline(ctx, 1, 1, w - 2, h - 2, 10, 2,
+                                vgfx_theme_color(ctx, VGP_THEME_ACCENT));
 
     /* Title */
-    if (l->font_face) {
-        plutovg_canvas_set_font(l->canvas, l->font_face, l->font_size + 2);
-        plutovg_canvas_set_rgba(l->canvas, 0.32f, 0.53f, 0.88f, 1.0f);
-        plutovg_canvas_fill_text(l->canvas, "VGP Launcher", -1,
-                                  PLUTOVG_TEXT_ENCODING_UTF8,
-                                  pad + 8, pad + 16);
-    }
+    vgfx_text_bold(ctx, "VGP Launcher", p + 4, p + fs + 4, fs + 2,
+                     vgfx_theme_color(ctx, VGP_THEME_ACCENT));
 
     /* Input box */
-    float box_y = pad + 28;
-    plutovg_canvas_set_rgba(l->canvas, 0.14f, 0.14f, 0.2f, 1.0f);
-    plutovg_canvas_round_rect(l->canvas, pad, box_y,
-                               w - pad * 2, input_h, 6, 6);
-    plutovg_canvas_fill(l->canvas);
+    float iy = p * 2 + fs + 12;
+    float ih = ctx->theme.input_height + 4;
+    vgfx_rounded_rect(ctx, p, iy, w - p * 2, ih, 6,
+                        vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
+    vgfx_rounded_rect_outline(ctx, p, iy, w - p * 2, ih, 6, 1,
+                                vgfx_theme_color(ctx, VGP_THEME_ACCENT));
 
-    /* Input box border */
-    plutovg_canvas_set_rgba(l->canvas, 0.32f, 0.53f, 0.88f, 0.5f);
-    plutovg_canvas_round_rect(l->canvas, pad, box_y,
-                               w - pad * 2, input_h, 6, 6);
-    plutovg_canvas_set_line_width(l->canvas, 1.0f);
-    plutovg_canvas_stroke(l->canvas);
-
-    /* Input text */
-    if (l->font_face) {
-        float text_y = box_y + input_h / 2.0f + l->font_size / 3.0f;
-        plutovg_canvas_set_font(l->canvas, l->font_face, l->font_size);
-
-        if (l->input_len > 0) {
-            plutovg_canvas_set_rgba(l->canvas, 0.92f, 0.92f, 0.92f, 1.0f);
-            plutovg_canvas_fill_text(l->canvas, l->input_buf, l->input_len,
-                                      PLUTOVG_TEXT_ENCODING_UTF8,
-                                      pad + 10, text_y);
-        } else {
-            /* Placeholder */
-            plutovg_canvas_set_rgba(l->canvas, 0.45f, 0.45f, 0.5f, 1.0f);
-            plutovg_canvas_fill_text(l->canvas, "Type to search...", -1,
-                                      PLUTOVG_TEXT_ENCODING_UTF8,
-                                      pad + 10, text_y);
-        }
-
-        /* Text cursor */
-        float cursor_x = pad + 10;
-        if (l->input_len > 0) {
-            cursor_x += plutovg_font_face_text_extents(l->font_face, l->font_size,
-                                                        l->input_buf, l->input_len,
-                                                        PLUTOVG_TEXT_ENCODING_UTF8,
-                                                        NULL);
-        }
-        plutovg_canvas_set_rgba(l->canvas, 0.92f, 0.92f, 0.92f, 0.8f);
-        plutovg_canvas_rect(l->canvas, cursor_x, box_y + 6, 2, input_h - 12);
-        plutovg_canvas_fill(l->canvas);
+    if (l->input_len > 0) {
+        vgfx_text(ctx, l->input_buf, p + 10, iy + ih * 0.5f + fs * 0.35f, fs,
+                    vgfx_theme_color(ctx, VGP_THEME_FG));
+        /* Cursor */
+        float cw = vgfx_text_width(ctx, l->input_buf, l->input_len, fs);
+        vgfx_rect(ctx, p + 10 + cw + 1, iy + 5, 2, ih - 10,
+                    vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    } else {
+        vgfx_text(ctx, "Type to search...", p + 10, iy + ih * 0.5f + fs * 0.35f, fs,
+                    vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
+        vgfx_rect(ctx, p + 10, iy + 5, 2, ih - 10, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
     }
 
     /* Results list */
-    float list_y = box_y + input_h + pad;
+    float ly = iy + ih + p;
+    float item_h = fs + 14;
+    float list_h = h - ly - 30;
+    int visible = (int)(list_h / item_h);
+    if (visible < 1) visible = 1;
+
+    /* Scroll to keep selection visible */
+    if (l->selected_index < l->scroll_offset)
+        l->scroll_offset = l->selected_index;
+    if (l->selected_index >= l->scroll_offset + visible)
+        l->scroll_offset = l->selected_index - visible + 1;
+
+    vgfx_push_clip(ctx, p, ly, w - p * 2, list_h);
+    for (int i = l->scroll_offset; i < l->filtered_count && (i - l->scroll_offset) < visible; i++) {
+        float ry = ly + (float)(i - l->scroll_offset) * item_h;
+        int app_idx = l->filtered[i].app_index;
+        launcher_app_t *app = &l->app_list.apps[app_idx];
+        bool sel = (i == l->selected_index);
+
+        if (sel) {
+            vgfx_rounded_rect(ctx, p + 2, ry, w - p * 2 - 4, item_h - 2, 6,
+                                vgfx_alpha(vgfx_theme_color(ctx, VGP_THEME_ACCENT), 0.25f));
+            /* Accent bar */
+            vgfx_rounded_rect(ctx, p + 4, ry + 4, 3, item_h - 10, 1.5f,
+                                vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+        }
+
+        vgfx_color_t text_c = sel ? vgfx_theme_color(ctx, VGP_THEME_FG) :
+                                      vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY);
+        vgfx_text(ctx, app->name, p + 16, ry + item_h * 0.5f + fs * 0.35f, fs, text_c);
+
+        /* Mouse click */
+        if (ctx->mouse_clicked && ctx->mouse_y >= ry && ctx->mouse_y < ry + item_h &&
+            ctx->mouse_x >= p && ctx->mouse_x < w - p) {
+            l->selected_index = i;
+            ctx->dirty = true;
+        }
+    }
+    vgfx_pop_clip(ctx);
 
     /* Result count */
-    if (l->font_face) {
-        char count_str[32];
-        snprintf(count_str, sizeof(count_str), "%d results", l->filtered_count);
-        plutovg_canvas_set_font(l->canvas, l->font_face, l->font_size - 2);
-        plutovg_canvas_set_rgba(l->canvas, 0.45f, 0.45f, 0.5f, 1.0f);
-        plutovg_canvas_fill_text(l->canvas, count_str, -1,
-                                  PLUTOVG_TEXT_ENCODING_UTF8,
-                                  w - pad - 80, list_y - 4);
-    }
-
-    for (int i = 0; i < LAUNCHER_VISIBLE_ITEMS &&
-         (i + l->scroll_offset) < l->filtered_count; i++) {
-        int idx = i + l->scroll_offset;
-        launcher_app_t *app = &l->app_list.apps[l->filtered[idx].app_index];
-
-        float iy = list_y + (float)i * item_h;
-
-        /* Selection highlight */
-        if (idx == l->selected_index) {
-            plutovg_canvas_set_rgba(l->canvas, 0.32f, 0.53f, 0.88f, 0.25f);
-            plutovg_canvas_round_rect(l->canvas, pad, iy,
-                                       w - pad * 2, item_h, 4, 4);
-            plutovg_canvas_fill(l->canvas);
-
-            /* Selection left accent bar */
-            plutovg_canvas_set_rgba(l->canvas, 0.32f, 0.53f, 0.88f, 0.9f);
-            plutovg_canvas_round_rect(l->canvas, pad, iy + 4,
-                                       3, item_h - 8, 1.5f, 1.5f);
-            plutovg_canvas_fill(l->canvas);
-        }
-
-        /* App name */
-        if (l->font_face) {
-            float name_y = iy + item_h / 2.0f + l->font_size / 3.0f;
-
-            if (idx == l->selected_index)
-                plutovg_canvas_set_rgba(l->canvas, 0.95f, 0.95f, 0.95f, 1.0f);
-            else
-                plutovg_canvas_set_rgba(l->canvas, 0.78f, 0.78f, 0.78f, 1.0f);
-
-            plutovg_canvas_set_font(l->canvas, l->font_face, l->font_size);
-            plutovg_canvas_fill_text(l->canvas, app->name, -1,
-                                      PLUTOVG_TEXT_ENCODING_UTF8,
-                                      pad + 18, name_y);
-        }
-    }
-
-    /* Commit surface to VGP */
-    uint8_t *data = plutovg_surface_get_data(l->surface);
-    int stride = plutovg_surface_get_stride(l->surface);
-    fprintf(stderr, "  render: committing surface %dx%d stride=%d (%zu bytes)\n",
-            LAUNCHER_WIDTH, LAUNCHER_HEIGHT, stride,
-            (size_t)stride * LAUNCHER_HEIGHT);
-    vgp_surface_attach(l->conn, l->window_id,
-                        LAUNCHER_WIDTH, LAUNCHER_HEIGHT,
-                        (uint32_t)stride, data);
-    fprintf(stderr, "  render: surface_attach sent\n");
+    char count[32];
+    snprintf(count, sizeof(count), "%d results", l->filtered_count);
+    vgfx_text(ctx, count, p, h - 18, fs - 2, vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
 }

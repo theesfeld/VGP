@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
     }
 
     fprintf(stderr, "vgp-launcher: init ok, window_id=%u, %d apps scanned, entering run loop\n",
-            launcher.window_id, launcher.app_list.count);
+            launcher.ctx.window_id, launcher.app_list.count);
     launcher_run(&launcher);
     fprintf(stderr, "vgp-launcher: run loop exited\n");
     launcher_destroy(&launcher);

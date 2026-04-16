@@ -1,6 +1,6 @@
-/* VGP Files -- Simple file manager */
+/* VGP Files -- GPU-rendered graphical file manager */
 
-#include "vgp-ui.h"
+#include "vgp-gfx.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,203 +8,174 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <pwd.h>
-#include <time.h>
 
-#define MAX_ENTRIES 1024
+#define MAX_FILES 1024
 
 typedef struct {
-    char  name[256];
-    bool  is_dir;
+    char name[256];
+    bool is_dir;
     off_t size;
-    time_t mtime;
 } file_entry_t;
 
-typedef struct {
-    char          cwd[512];
-    file_entry_t  entries[MAX_ENTRIES];
-    int           entry_count;
-    int           selected;
-    int           scroll;
-} files_state_t;
+static struct {
+    char cwd[1024];
+    file_entry_t files[MAX_FILES];
+    int count;
+    int selected;
+    int scroll;
+} fm;
 
-static files_state_t fs;
-
-static int entry_cmp(const void *a, const void *b)
+static int cmp_files(const void *a, const void *b)
 {
-    const file_entry_t *ea = a, *eb = b;
-    /* Directories first */
-    if (ea->is_dir && !eb->is_dir) return -1;
-    if (!ea->is_dir && eb->is_dir) return 1;
-    return strcasecmp(ea->name, eb->name);
+    const file_entry_t *fa = a, *fb = b;
+    if (fa->is_dir != fb->is_dir) return fa->is_dir ? -1 : 1;
+    return strcasecmp(fa->name, fb->name);
 }
 
 static void scan_dir(void)
 {
-    fs.entry_count = 0;
-    fs.selected = 0;
-    fs.scroll = 0;
-
-    DIR *dir = opendir(fs.cwd);
+    fm.count = 0;
+    fm.selected = 0;
+    fm.scroll = 0;
+    DIR *dir = opendir(fm.cwd);
     if (!dir) return;
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL && fs.entry_count < MAX_ENTRIES) {
-        if (strcmp(entry->d_name, ".") == 0) continue;
-
-        file_entry_t *fe = &fs.entries[fs.entry_count];
-        snprintf(fe->name, sizeof(fe->name), "%s", entry->d_name);
-
-        char full_path[768];
-        snprintf(full_path, sizeof(full_path), "%s/%s", fs.cwd, entry->d_name);
-
-        struct stat st;
-        if (stat(full_path, &st) == 0) {
-            fe->is_dir = S_ISDIR(st.st_mode);
-            fe->size = st.st_size;
-            fe->mtime = st.st_mtime;
-        } else {
-            fe->is_dir = false;
-            fe->size = 0;
-            fe->mtime = 0;
+    struct dirent *e;
+    while ((e = readdir(dir)) != NULL && fm.count < MAX_FILES) {
+        if (e->d_name[0] == '.' && e->d_name[1] == '\0') continue;
+        file_entry_t *f = &fm.files[fm.count];
+        snprintf(f->name, sizeof(f->name), "%s", e->d_name);
+        f->is_dir = (e->d_type == DT_DIR);
+        f->size = 0;
+        if (!f->is_dir) {
+            char path[1280];
+            snprintf(path, sizeof(path), "%s/%s", fm.cwd, f->name);
+            struct stat st;
+            if (stat(path, &st) == 0) f->size = st.st_size;
         }
-
-        fs.entry_count++;
+        fm.count++;
     }
     closedir(dir);
-
-    qsort(fs.entries, (size_t)fs.entry_count, sizeof(file_entry_t), entry_cmp);
+    qsort(fm.files, (size_t)fm.count, sizeof(file_entry_t), cmp_files);
 }
 
 static void navigate(const char *name)
 {
     if (strcmp(name, "..") == 0) {
-        char *last = strrchr(fs.cwd, '/');
-        if (last && last != fs.cwd) *last = '\0';
-        else strcpy(fs.cwd, "/");
+        char *slash = strrchr(fm.cwd, '/');
+        if (slash && slash != fm.cwd) *slash = '\0';
+        else fm.cwd[1] = '\0';
     } else {
-        char new_path[768];
-        if (strcmp(fs.cwd, "/") == 0)
-            snprintf(new_path, sizeof(new_path), "/%s", name);
-        else
-            snprintf(new_path, sizeof(new_path), "%s/%s", fs.cwd, name);
-        snprintf(fs.cwd, sizeof(fs.cwd), "%s", new_path);
+        size_t len = strlen(fm.cwd);
+        if (len > 1) snprintf(fm.cwd + len, sizeof(fm.cwd) - len, "/%s", name);
+        else snprintf(fm.cwd + len, sizeof(fm.cwd) - len, "%s", name);
     }
     scan_dir();
 }
 
-static const char *format_size(off_t size)
+static void format_size(off_t size, char *buf, int buf_sz)
 {
-    static char buf[32];
-    if (size < 1024) snprintf(buf, sizeof(buf), "%ldB", (long)size);
-    else if (size < 1024*1024) snprintf(buf, sizeof(buf), "%.1fK", (double)size / 1024.0);
-    else if (size < 1024*1024*1024) snprintf(buf, sizeof(buf), "%.1fM", (double)size / (1024.0*1024.0));
-    else snprintf(buf, sizeof(buf), "%.1fG", (double)size / (1024.0*1024.0*1024.0));
-    return buf;
+    if (size < 1024) snprintf(buf, buf_sz, "%ld B", (long)size);
+    else if (size < 1024*1024) snprintf(buf, buf_sz, "%.1f KB", (double)size / 1024);
+    else if (size < 1024*1024*1024) snprintf(buf, buf_sz, "%.1f MB", (double)size / (1024*1024));
+    else snprintf(buf, buf_sz, "%.1f GB", (double)size / (1024*1024*1024));
 }
 
-static void render(vui_ctx_t *ctx)
+static void render(vgfx_ctx_t *ctx)
 {
-    vui_clear(ctx, VUI_BG);
-
-    /* Title bar */
-    vui_fill(ctx, 0, 0, 1, ctx->cols, VUI_SURFACE);
-    vui_text_bold(ctx, 0, 2, " VGP Files ", VUI_ACCENT, VUI_SURFACE);
+    vgfx_clear(ctx, vgfx_theme_color(ctx, VGP_THEME_BG));
+    float p = ctx->theme.padding;
+    float fs = ctx->theme.font_size;
+    float w = ctx->width, h = ctx->height;
 
     /* Path bar */
-    vui_fill(ctx, 1, 0, 1, ctx->cols, (vui_color_t){0x18, 0x18, 0x28});
-    vui_text(ctx, 1, 2, fs.cwd, VUI_WHITE, (vui_color_t){0x18, 0x18, 0x28});
+    vgfx_rounded_rect(ctx, p, p, w - p*2, 30, 4, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
+    vgfx_text(ctx, fm.cwd, p + 10, p + 20, fs, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
 
     /* Column headers */
-    vui_text_bold(ctx, 3, 2, "Name", VUI_GRAY, VUI_BG);
-    vui_text_bold(ctx, 3, ctx->cols - 20, "Size", VUI_GRAY, VUI_BG);
-    vui_hline(ctx, 4, 0, ctx->cols, VUI_BORDER, VUI_BG);
+    float list_y = p + 40;
+    vgfx_text_bold(ctx, "Name", p + 30, list_y + fs, fs - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+    vgfx_text_bold(ctx, "Size", w - 120, list_y + fs, fs - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+    list_y += fs + 8;
+    vgfx_separator(ctx, p, list_y, w - p*2);
+    list_y += 4;
 
     /* File list */
-    int list_start = 5;
-    int visible = ctx->rows - list_start - 2;
+    float row_h = fs + 10;
+    int visible = (int)((h - list_y - p) / row_h);
+    if (visible < 1) visible = 1;
 
-    /* Handle keyboard navigation */
+    /* Keyboard nav */
     if (ctx->key_pressed) {
-        if (ctx->last_keysym == 0xFF52 && fs.selected > 0) fs.selected--; /* Up */
-        if (ctx->last_keysym == 0xFF54 && fs.selected < fs.entry_count - 1) fs.selected++; /* Down */
-        if (ctx->last_keysym == 0xFF0D) { /* Enter */
-            if (fs.selected >= 0 && fs.selected < fs.entry_count) {
-                file_entry_t *fe = &fs.entries[fs.selected];
-                if (fe->is_dir) navigate(fe->name);
-            }
+        if (ctx->last_keysym == 0xFF52 && fm.selected > 0) fm.selected--; /* Up */
+        if (ctx->last_keysym == 0xFF54 && fm.selected < fm.count - 1) fm.selected++; /* Down */
+        if (ctx->last_keysym == 0xFF0D && fm.selected < fm.count) { /* Enter */
+            if (fm.files[fm.selected].is_dir) navigate(fm.files[fm.selected].name);
         }
-        if (ctx->last_keysym == 0xFF1B) ctx->running = false; /* Escape */
-
-        /* Keep selection visible */
-        if (fs.selected < fs.scroll) fs.scroll = fs.selected;
-        if (fs.selected >= fs.scroll + visible) fs.scroll = fs.selected - visible + 1;
+        if (ctx->last_keysym == 0xFF1B) { navigate(".."); } /* Escape = go up */
     }
 
-    for (int i = 0; i < visible && fs.scroll + i < fs.entry_count; i++) {
-        int idx = fs.scroll + i;
-        file_entry_t *fe = &fs.entries[idx];
-        int row = list_start + i;
-        bool selected = (idx == fs.selected);
-        bool hover = (ctx->mouse_row == row);
+    /* Scroll to keep selected visible */
+    if (fm.selected < fm.scroll) fm.scroll = fm.selected;
+    if (fm.selected >= fm.scroll + visible) fm.scroll = fm.selected - visible + 1;
 
-        vui_color_t bg = selected ? VUI_ACCENT : (hover ? VUI_SURFACE : VUI_BG);
-        vui_color_t fg = selected ? VUI_WHITE : VUI_WHITE;
-        vui_fill(ctx, row, 0, 1, ctx->cols, bg);
+    vgfx_push_clip(ctx, 0, list_y, w, h - list_y - p);
+    for (int i = fm.scroll; i < fm.count && i < fm.scroll + visible; i++) {
+        float ry = list_y + (float)(i - fm.scroll) * row_h;
+        bool hover = (ctx->mouse_y >= ry && ctx->mouse_y < ry + row_h &&
+                        ctx->mouse_x >= p && ctx->mouse_x < w - p);
+        bool sel = (i == fm.selected);
+
+        if (sel) {
+            vgfx_rounded_rect(ctx, p, ry, w - p*2, row_h, 4,
+                                vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+        } else if (hover) {
+            vgfx_rounded_rect(ctx, p, ry, w - p*2, row_h, 4,
+                                vgfx_theme_color(ctx, VGP_THEME_BG_TERTIARY));
+        }
+
+        if (hover && ctx->mouse_clicked) {
+            if (i == fm.selected && fm.files[i].is_dir) navigate(fm.files[i].name);
+            else fm.selected = i;
+        }
 
         /* Icon */
-        if (fe->is_dir) {
-            vui_set_cell(ctx, row, 2, 0x1F4C1, VUI_YELLOW, bg, 0); /* 📁 folder */
-            vui_text(ctx, row, 4, fe->name, VUI_ACCENT, bg);
-        } else {
-            vui_set_cell(ctx, row, 2, 0x1F4C4, VUI_GRAY, bg, 0); /* 📄 file */
-            vui_text(ctx, row, 4, fe->name, fg, bg);
-        }
+        const char *icon = fm.files[i].is_dir ? "D" : "F";
+        vgfx_color_t icon_c = fm.files[i].is_dir ?
+            vgfx_theme_color(ctx, VGP_THEME_WARNING) : vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY);
+        vgfx_text_bold(ctx, icon, p + 10, ry + row_h * 0.5f + fs * 0.35f, fs, icon_c);
+
+        /* Name */
+        vgfx_color_t name_c = sel ? vgfx_rgb(1,1,1) : vgfx_theme_color(ctx, VGP_THEME_FG);
+        vgfx_text(ctx, fm.files[i].name, p + 30, ry + row_h * 0.5f + fs * 0.35f, fs, name_c);
 
         /* Size */
-        if (!fe->is_dir) {
-            const char *sz = format_size(fe->size);
-            vui_text(ctx, row, ctx->cols - 12, sz, VUI_GRAY, bg);
-        }
-
-        /* Click to select/open */
-        if (hover && ctx->mouse_clicked) {
-            if (idx == fs.selected && fe->is_dir) {
-                navigate(fe->name); /* double-click to enter dir */
-                return;
-            }
-            fs.selected = idx;
+        if (!fm.files[i].is_dir) {
+            char sz[32]; format_size(fm.files[i].size, sz, sizeof(sz));
+            vgfx_text(ctx, sz, w - 120, ry + row_h * 0.5f + fs * 0.35f, fs - 1,
+                        sel ? vgfx_rgb(1,1,1) : vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
         }
     }
+    vgfx_pop_clip(ctx);
 
-    vui_scrollbar(ctx, list_start, ctx->cols - 1, visible,
-                   visible, fs.entry_count, fs.scroll);
+    /* Scrollbar */
+    if (fm.count > visible)
+        vgfx_scrollbar(ctx, w - p - 8, list_y, h - list_y - p, visible, fm.count, &fm.scroll);
 
-    /* Status bar */
-    vui_fill(ctx, ctx->rows - 1, 0, 1, ctx->cols, VUI_SURFACE);
-    char status[128];
-    snprintf(status, sizeof(status), " %d items | Arrows: navigate | Enter: open | Esc: quit",
-             fs.entry_count);
-    vui_text(ctx, ctx->rows - 1, 1, status, VUI_GRAY, VUI_SURFACE);
+    /* Status */
+    char status[64]; snprintf(status, sizeof(status), "%d items", fm.count);
+    vgfx_text(ctx, status, p, h - p - 2, fs - 2, vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
 }
 
 int main(int argc, char *argv[])
 {
     (void)argc; (void)argv;
-
-    FILE *logfile = fopen("/tmp/vgp-files.log", "w");
-    if (logfile) { setvbuf(logfile, NULL, _IOLBF, 0); dup2(fileno(logfile), STDERR_FILENO); fclose(logfile); }
-
-    /* Start in home directory */
     const char *home = getenv("HOME");
-    snprintf(fs.cwd, sizeof(fs.cwd), "%s", home ? home : "/");
+    snprintf(fm.cwd, sizeof(fm.cwd), "%s", home ? home : "/");
     scan_dir();
 
-    vui_ctx_t ctx;
-    if (vui_init(&ctx, "VGP Files", 800, 500) < 0)
-        return 1;
-
-    vui_run(&ctx, render);
-    vui_destroy(&ctx);
+    vgfx_ctx_t ctx;
+    if (vgfx_init(&ctx, "VGP Files", 750, 500, 0) < 0) return 1;
+    vgfx_run(&ctx, render);
+    vgfx_destroy(&ctx);
     return 0;
 }

@@ -145,6 +145,42 @@ dep_libvgp = declare_dependency(
 )
 
 # ============================================================
+# Shared UI library for VGP apps (cell grid, legacy)
+# ============================================================
+
+vgp_ui_inc = include_directories('src/libvgp-ui')
+
+libvgp_ui = static_library('vgp-ui',
+  files('src/libvgp-ui/vgp-ui.c', 'src/libvgp-ui/config-writer.c'),
+  include_directories : [vgp_inc, vgp_ui_inc],
+  dependencies : [dep_libvgp],
+)
+
+dep_vgp_ui = declare_dependency(
+  link_with : libvgp_ui,
+  include_directories : [vgp_inc, vgp_ui_inc],
+  dependencies : [dep_libvgp],
+)
+
+# ============================================================
+# Graphical UI library for VGP apps (draw commands, GPU)
+# ============================================================
+
+vgp_gfx_inc = include_directories('src/libvgp-gfx')
+
+libvgp_gfx = static_library('vgp-gfx',
+  files('src/libvgp-gfx/vgp-gfx.c', 'src/libvgp-gfx/vgp-gfx-widgets.c'),
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_libvgp],
+)
+
+dep_vgp_gfx = declare_dependency(
+  link_with : libvgp_gfx,
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_libvgp],
+)
+
+# ============================================================
 # Terminal emulator (vgp-term)
 # ============================================================
 
@@ -174,55 +210,27 @@ executable('vgp-launcher',
     'src/vgp-launcher/desktop.c',
     'src/vgp-launcher/render.c',
   ),
-  include_directories : vgp_inc,
-  dependencies : [dep_libvgp, dep_plutovg, dep_xkb, dep_math],
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_vgp_gfx],
   install : true,
 )
 
-# ============================================================
-# Shared UI library for VGP apps
-# ============================================================
-
-vgp_ui_inc = include_directories('src/libvgp-ui')
-
-libvgp_ui = static_library('vgp-ui',
-  files('src/libvgp-ui/vgp-ui.c', 'src/libvgp-ui/config-writer.c'),
-  include_directories : [vgp_inc, vgp_ui_inc],
-  dependencies : [dep_libvgp],
-)
-
-dep_vgp_ui = declare_dependency(
-  link_with : libvgp_ui,
-  include_directories : [vgp_inc, vgp_ui_inc],
-  dependencies : [dep_libvgp],
-)
-
-# ============================================================
-# Graphical UI library for VGP apps (draw commands, not cell grid)
-# ============================================================
-
-vgp_gfx_inc = include_directories('src/libvgp-gfx')
-
-libvgp_gfx = static_library('vgp-gfx',
-  files('src/libvgp-gfx/vgp-gfx.c', 'src/libvgp-gfx/vgp-gfx-widgets.c'),
-  include_directories : [vgp_inc, vgp_gfx_inc],
-  dependencies : [dep_libvgp],
-)
-
-dep_vgp_gfx = declare_dependency(
-  link_with : libvgp_gfx,
-  include_directories : [vgp_inc, vgp_gfx_inc],
-  dependencies : [dep_libvgp],
-)
+# (libvgp-ui and libvgp-gfx defined above, before launcher)
 
 # ============================================================
 # VGP Settings
 # ============================================================
 
+config_writer = static_library('config-writer',
+  files('src/libvgp-ui/config-writer.c'),
+  include_directories : [vgp_inc, vgp_ui_inc],
+)
+
 executable('vgp-settings',
   files('src/vgp-settings/main.c'),
-  include_directories : [vgp_inc, vgp_ui_inc],
-  dependencies : [dep_vgp_ui],
+  include_directories : [vgp_inc, vgp_gfx_inc, vgp_ui_inc],
+  dependencies : [dep_vgp_gfx],
+  link_with : [config_writer],
   install : true,
 )
 
@@ -232,8 +240,8 @@ executable('vgp-settings',
 
 executable('vgp-monitor',
   files('src/vgp-monitor/main.c'),
-  include_directories : [vgp_inc, vgp_ui_inc],
-  dependencies : [dep_vgp_ui],
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_vgp_gfx],
   install : true,
 )
 
@@ -243,8 +251,8 @@ executable('vgp-monitor',
 
 executable('vgp-files',
   files('src/vgp-files/main.c'),
-  include_directories : [vgp_inc, vgp_ui_inc],
-  dependencies : [dep_vgp_ui],
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_vgp_gfx],
   install : true,
 )
 
@@ -258,8 +266,8 @@ executable('vgp-files',
 
 executable('vgp-edit',
   files('src/vgp-edit/main.c'),
-  include_directories : [vgp_inc, vgp_ui_inc],
-  dependencies : [dep_vgp_ui],
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_vgp_gfx],
   install : true,
 )
 
@@ -280,8 +288,8 @@ executable('vgp-view',
 
 executable('vgp-bar',
   files('src/vgp-bar/main.c'),
-  include_directories : [vgp_inc, vgp_ui_inc],
-  dependencies : [dep_vgp_ui],
+  include_directories : [vgp_inc, vgp_gfx_inc],
+  dependencies : [dep_vgp_gfx],
   install : true,
 )
 

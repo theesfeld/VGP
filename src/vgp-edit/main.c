@@ -1,49 +1,30 @@
-/* VGP Edit -- Simple text editor with syntax highlighting
- * Vector-rendered via cell grid protocol. */
+/* VGP Edit -- GPU-rendered graphical text editor with syntax highlighting */
 
-#include "vgp-ui.h"
+#include "vgp-gfx.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #define MAX_LINES 10000
-#define MAX_LINE_LEN 1024
+#define MAX_LINE_LEN 512
 
-typedef struct {
-    char  lines[MAX_LINES][MAX_LINE_LEN];
-    int   line_count;
-    int   cursor_row, cursor_col;
-    int   scroll_row;
-    char  filename[512];
-    bool  modified;
-    char  status[128];
-    int   status_timer;
-} editor_state_t;
-
-static editor_state_t ed;
+static struct {
+    char lines[MAX_LINES][MAX_LINE_LEN];
+    int  line_count;
+    int  cursor_row, cursor_col;
+    int  scroll;
+    char filename[512];
+    bool modified;
+} ed;
 
 static void load_file(const char *path)
 {
     snprintf(ed.filename, sizeof(ed.filename), "%s", path);
     ed.line_count = 0;
-    ed.cursor_row = 0;
-    ed.cursor_col = 0;
-    ed.scroll_row = 0;
-    ed.modified = false;
-
     FILE *f = fopen(path, "r");
-    if (!f) {
-        /* New file */
-        ed.line_count = 1;
-        ed.lines[0][0] = '\0';
-        return;
-    }
-
-    while (ed.line_count < MAX_LINES &&
-           fgets(ed.lines[ed.line_count], MAX_LINE_LEN, f)) {
-        /* Strip newline */
+    if (!f) { ed.lines[0][0] = '\0'; ed.line_count = 1; return; }
+    while (ed.line_count < MAX_LINES && fgets(ed.lines[ed.line_count], MAX_LINE_LEN, f)) {
         size_t len = strlen(ed.lines[ed.line_count]);
         while (len > 0 && (ed.lines[ed.line_count][len-1] == '\n' ||
                             ed.lines[ed.line_count][len-1] == '\r'))
@@ -51,222 +32,167 @@ static void load_file(const char *path)
         ed.line_count++;
     }
     fclose(f);
-    if (ed.line_count == 0) {
-        ed.line_count = 1;
-        ed.lines[0][0] = '\0';
-    }
+    if (ed.line_count == 0) { ed.lines[0][0] = '\0'; ed.line_count = 1; }
 }
 
 static void save_file(void)
 {
+    if (!ed.filename[0]) return;
     FILE *f = fopen(ed.filename, "w");
-    if (!f) {
-        snprintf(ed.status, sizeof(ed.status), "Error: cannot save %s", ed.filename);
-        ed.status_timer = 120;
-        return;
-    }
+    if (!f) return;
     for (int i = 0; i < ed.line_count; i++)
         fprintf(f, "%s\n", ed.lines[i]);
     fclose(f);
     ed.modified = false;
-    snprintf(ed.status, sizeof(ed.status), "Saved: %s (%d lines)", ed.filename, ed.line_count);
-    ed.status_timer = 120;
 }
 
-/* Simple keyword detection for syntax highlighting */
 static bool is_keyword(const char *word, int len)
 {
-    static const char *keywords[] = {
-        "if","else","for","while","return","int","char","void","float","double",
-        "struct","typedef","enum","const","static","bool","true","false","NULL",
-        "include","define","ifdef","endif","ifndef","break","continue","switch",
-        "case","default","do","sizeof","unsigned","long","short","extern",
-        "import","from","def","class","self","print","fn","let","mut","pub",
-        "use","mod","crate","async","await","function","var","const",NULL
+    static const char *kws[] = {
+        "if","else","for","while","return","int","void","char","float","double",
+        "struct","typedef","enum","const","static","bool","true","false",
+        "break","continue","switch","case","default","sizeof","NULL",
+        "include","define","ifdef","ifndef","endif",NULL
     };
-    for (int i = 0; keywords[i]; i++) {
-        if ((int)strlen(keywords[i]) == len && strncmp(word, keywords[i], (size_t)len) == 0)
-            return true;
-    }
+    for (int i = 0; kws[i]; i++)
+        if ((int)strlen(kws[i]) == len && strncmp(word, kws[i], (size_t)len) == 0) return true;
     return false;
 }
 
-static vui_color_t syntax_color(char c, const char *line, int col)
+static vgfx_color_t syntax_color(vgfx_ctx_t *ctx, char c, const char *line, int col)
 {
+    (void)col;
     /* Comment detection */
-    if (col >= 1 && line[col-1] == '/' && c == '/') return (vui_color_t){0x60, 0x70, 0x60};
-    if (c == '/' && col + 1 < (int)strlen(line) && line[col+1] == '/') return (vui_color_t){0x60, 0x70, 0x60};
-
-    /* String */
-    if (c == '"' || c == '\'') return (vui_color_t){0xC0, 0x90, 0x50};
-
-    /* Number */
-    if (c >= '0' && c <= '9') return (vui_color_t){0xB0, 0x80, 0xD0};
-
-    /* Preprocessor */
-    if (c == '#') return (vui_color_t){0x90, 0xB0, 0xC0};
-
-    /* Brackets */
-    if (c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']')
-        return (vui_color_t){0xE0, 0xC0, 0x40};
-
-    return VUI_WHITE;
+    if (line[0] == '/' && line[1] == '/') return vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED);
+    if (line[0] == '#') return vgfx_theme_color(ctx, VGP_THEME_WARNING);
+    if (c == '"' || c == '\'') return vgfx_theme_color(ctx, VGP_THEME_SUCCESS);
+    if (c >= '0' && c <= '9') return vgfx_theme_color(ctx, VGP_THEME_WARNING);
+    return vgfx_theme_color(ctx, VGP_THEME_FG);
 }
 
-static void render(vui_ctx_t *ctx)
+static void render(vgfx_ctx_t *ctx)
 {
-    vui_clear(ctx, VUI_BG);
+    vgfx_clear(ctx, vgfx_theme_color(ctx, VGP_THEME_BG));
+    float p = ctx->theme.padding;
+    float fs = ctx->theme.font_size;
+    float lh = fs + 4; /* line height */
+    float w = ctx->width, h = ctx->height;
 
     /* Title bar */
-    vui_fill(ctx, 0, 0, 1, ctx->cols, VUI_SURFACE);
+    vgfx_rounded_rect(ctx, 0, 0, w, 28, 0, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
     char title[256];
-    snprintf(title, sizeof(title), " VGP Edit - %s%s ",
-             ed.filename[0] ? ed.filename : "[new]",
-             ed.modified ? " [modified]" : "");
-    vui_text_bold(ctx, 0, 2, title, VUI_ACCENT, VUI_SURFACE);
+    snprintf(title, sizeof(title), "%s%s", ed.filename[0] ? ed.filename : "Untitled",
+             ed.modified ? " *" : "");
+    vgfx_text_bold(ctx, title, p, 19, fs, vgfx_theme_color(ctx, VGP_THEME_FG));
 
-    /* Line number width */
-    int ln_width = 5;
-    int text_start = ln_width + 1;
-    int visible_lines = ctx->rows - 3;
+    /* Editor area */
+    float gutter_w = 50;
+    float ey = 32, ex = gutter_w, ew = w - gutter_w - p, eh = h - 32 - 24;
+    int visible = (int)(eh / lh);
 
-    /* Handle keyboard */
+    /* Keyboard input */
     if (ctx->key_pressed) {
-        uint32_t sym = ctx->last_keysym;
-        bool ctrl = (ctx->last_mods & 0x0002) != 0;
-
-        if (ctrl && (sym == 0x0073 || sym == 0x0053)) { /* Ctrl+S */
-            save_file();
-        } else if (sym == 0xFF52) { /* Up */
-            if (ed.cursor_row > 0) ed.cursor_row--;
-        } else if (sym == 0xFF54) { /* Down */
-            if (ed.cursor_row < ed.line_count - 1) ed.cursor_row++;
-        } else if (sym == 0xFF51) { /* Left */
-            if (ed.cursor_col > 0) ed.cursor_col--;
-        } else if (sym == 0xFF53) { /* Right */
-            ed.cursor_col++;
-        } else if (sym == 0xFF50) { /* Home */
-            ed.cursor_col = 0;
-        } else if (sym == 0xFF57) { /* End */
-            ed.cursor_col = (int)strlen(ed.lines[ed.cursor_row]);
-        } else if (sym == 0xFF0D) { /* Enter */
-            if (ed.line_count < MAX_LINES) {
-                memmove(&ed.lines[ed.cursor_row + 2], &ed.lines[ed.cursor_row + 1],
-                        (size_t)(ed.line_count - ed.cursor_row - 1) * MAX_LINE_LEN);
-                char *cur = ed.lines[ed.cursor_row];
-                int len = (int)strlen(cur);
-                if (ed.cursor_col < len) {
-                    snprintf(ed.lines[ed.cursor_row + 1], MAX_LINE_LEN, "%s", cur + ed.cursor_col);
-                    cur[ed.cursor_col] = '\0';
-                } else {
-                    ed.lines[ed.cursor_row + 1][0] = '\0';
-                }
-                ed.line_count++;
-                ed.cursor_row++;
-                ed.cursor_col = 0;
-                ed.modified = true;
-            }
-        } else if (sym == 0xFF08) { /* Backspace */
-            if (ed.cursor_col > 0) {
-                char *line = ed.lines[ed.cursor_row];
-                int len = (int)strlen(line);
-                memmove(line + ed.cursor_col - 1, line + ed.cursor_col, (size_t)(len - ed.cursor_col + 1));
-                ed.cursor_col--;
-                ed.modified = true;
-            } else if (ed.cursor_row > 0) {
+        if (ctx->last_keysym == 0xFF52 && ed.cursor_row > 0) ed.cursor_row--; /* Up */
+        else if (ctx->last_keysym == 0xFF54 && ed.cursor_row < ed.line_count - 1) ed.cursor_row++; /* Down */
+        else if (ctx->last_keysym == 0xFF51 && ed.cursor_col > 0) ed.cursor_col--; /* Left */
+        else if (ctx->last_keysym == 0xFF53) ed.cursor_col++; /* Right */
+        else if (ctx->last_keysym == 0xFF08) { /* Backspace */
+            int len = (int)strlen(ed.lines[ed.cursor_row]);
+            if (ed.cursor_col > 0 && ed.cursor_col <= len) {
+                memmove(&ed.lines[ed.cursor_row][ed.cursor_col-1],
+                        &ed.lines[ed.cursor_row][ed.cursor_col], (size_t)(len - ed.cursor_col + 1));
+                ed.cursor_col--; ed.modified = true;
+            } else if (ed.cursor_col == 0 && ed.cursor_row > 0) {
                 int prev_len = (int)strlen(ed.lines[ed.cursor_row - 1]);
                 strncat(ed.lines[ed.cursor_row - 1], ed.lines[ed.cursor_row],
                         MAX_LINE_LEN - prev_len - 1);
                 memmove(&ed.lines[ed.cursor_row], &ed.lines[ed.cursor_row + 1],
                         (size_t)(ed.line_count - ed.cursor_row - 1) * MAX_LINE_LEN);
-                ed.line_count--;
-                ed.cursor_row--;
-                ed.cursor_col = prev_len;
-                ed.modified = true;
+                ed.line_count--; ed.cursor_row--; ed.cursor_col = prev_len; ed.modified = true;
             }
-        } else if (sym == 0xFF1B) { /* Escape */
-            ctx->running = false;
-        } else if (ctx->last_utf8[0] >= 0x20 && !ctrl) {
-            char *line = ed.lines[ed.cursor_row];
-            int len = (int)strlen(line);
+        } else if (ctx->last_keysym == 0xFF0D) { /* Enter */
+            if (ed.line_count < MAX_LINES) {
+                memmove(&ed.lines[ed.cursor_row + 2], &ed.lines[ed.cursor_row + 1],
+                        (size_t)(ed.line_count - ed.cursor_row - 1) * MAX_LINE_LEN);
+                int len = (int)strlen(ed.lines[ed.cursor_row]);
+                snprintf(ed.lines[ed.cursor_row + 1], MAX_LINE_LEN, "%s",
+                         &ed.lines[ed.cursor_row][ed.cursor_col]);
+                ed.lines[ed.cursor_row][ed.cursor_col] = '\0';
+                ed.line_count++; ed.cursor_row++; ed.cursor_col = 0; ed.modified = true;
+                (void)len;
+            }
+        } else if ((ctx->last_mods & 0x04) && (ctx->last_keysym == 's' || ctx->last_keysym == 'S')) {
+            save_file(); /* Ctrl+S */
+        } else if (ctx->last_utf8[0] >= 0x20) {
+            int len = (int)strlen(ed.lines[ed.cursor_row]);
             if (len < MAX_LINE_LEN - 2) {
-                memmove(line + ed.cursor_col + 1, line + ed.cursor_col, (size_t)(len - ed.cursor_col + 1));
-                line[ed.cursor_col] = ctx->last_utf8[0];
-                ed.cursor_col++;
-                ed.modified = true;
+                memmove(&ed.lines[ed.cursor_row][ed.cursor_col + 1],
+                        &ed.lines[ed.cursor_row][ed.cursor_col], (size_t)(len - ed.cursor_col + 1));
+                ed.lines[ed.cursor_row][ed.cursor_col] = ctx->last_utf8[0];
+                ed.cursor_col++; ed.modified = true;
             }
         }
-
-        /* Clamp cursor */
-        if (ed.cursor_col > (int)strlen(ed.lines[ed.cursor_row]))
-            ed.cursor_col = (int)strlen(ed.lines[ed.cursor_row]);
-
-        /* Scroll to keep cursor visible */
-        if (ed.cursor_row < ed.scroll_row) ed.scroll_row = ed.cursor_row;
-        if (ed.cursor_row >= ed.scroll_row + visible_lines)
-            ed.scroll_row = ed.cursor_row - visible_lines + 1;
     }
 
-    /* Render lines */
-    for (int i = 0; i < visible_lines && ed.scroll_row + i < ed.line_count; i++) {
-        int line_idx = ed.scroll_row + i;
-        int row = i + 2;
+    /* Clamp cursor */
+    if (ed.cursor_col > (int)strlen(ed.lines[ed.cursor_row]))
+        ed.cursor_col = (int)strlen(ed.lines[ed.cursor_row]);
+    if (ed.cursor_row < ed.scroll) ed.scroll = ed.cursor_row;
+    if (ed.cursor_row >= ed.scroll + visible) ed.scroll = ed.cursor_row - visible + 1;
+
+    /* Gutter (line numbers) */
+    vgfx_rect(ctx, 0, ey, gutter_w - 4, eh, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
+
+    vgfx_push_clip(ctx, 0, ey, w, eh);
+    for (int i = ed.scroll; i < ed.line_count && i < ed.scroll + visible; i++) {
+        float ly = ey + (float)(i - ed.scroll) * lh;
 
         /* Line number */
-        char ln[8];
-        snprintf(ln, sizeof(ln), "%4d", line_idx + 1);
-        vui_text(ctx, row, 0, ln, VUI_GRAY, VUI_BG);
-        vui_set_cell(ctx, row, ln_width, 0x2502, VUI_BORDER, VUI_BG, 0); /* │ */
+        char num[8]; snprintf(num, sizeof(num), "%4d", i + 1);
+        vgfx_text(ctx, num, 4, ly + fs, fs - 2, vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
 
-        /* Text with syntax coloring */
-        char *line = ed.lines[line_idx];
-        int len = (int)strlen(line);
-        bool in_comment = false;
-        for (int c = 0; c < len && text_start + c < ctx->cols; c++) {
-            if (c >= 1 && line[c-1] == '/' && line[c] == '/')
-                in_comment = true;
-            vui_color_t fg = in_comment ? (vui_color_t){0x60,0x70,0x60} : syntax_color(line[c], line, c);
-            vui_set_cell(ctx, row, text_start + c, (uint32_t)(unsigned char)line[c], fg, VUI_BG, 0);
-        }
+        /* Current line highlight */
+        if (i == ed.cursor_row)
+            vgfx_rect(ctx, ex, ly, ew, lh, vgfx_alpha(vgfx_theme_color(ctx, VGP_THEME_ACCENT), 0.08f));
 
-        /* Cursor */
-        if (line_idx == ed.cursor_row) {
-            int cc = text_start + ed.cursor_col;
-            if (cc < ctx->cols)
-                vui_set_cell(ctx, row, cc, ed.cursor_col < len ? (uint32_t)(unsigned char)line[ed.cursor_col] : ' ',
-                              VUI_BG, VUI_WHITE, 0);
+        /* Line text with basic syntax coloring */
+        const char *line = ed.lines[i];
+        float tx = ex + 4;
+        float char_w = vgfx_text_width(ctx, "M", 1, fs);
+        for (int c = 0; line[c]; c++) {
+            char ch[2] = {line[c], '\0'};
+            vgfx_color_t sc = syntax_color(ctx, line[c], line, c);
+            vgfx_text(ctx, ch, tx + (float)c * char_w, ly + fs, fs, sc);
         }
     }
+
+    /* Cursor */
+    {
+        float cy = ey + (float)(ed.cursor_row - ed.scroll) * lh;
+        float char_w = vgfx_text_width(ctx, "M", 1, fs);
+        float cx = ex + 4 + (float)ed.cursor_col * char_w;
+        vgfx_rect(ctx, cx, cy + 2, 2, lh - 4, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    }
+    vgfx_pop_clip(ctx);
 
     /* Status bar */
-    vui_fill(ctx, ctx->rows - 1, 0, 1, ctx->cols, VUI_SURFACE);
-    if (ed.status_timer > 0) {
-        vui_text(ctx, ctx->rows - 1, 2, ed.status, VUI_GREEN, VUI_SURFACE);
-        ed.status_timer--;
-    } else {
-        char st[128];
-        snprintf(st, sizeof(st), " Ln %d, Col %d | %d lines | Ctrl+S: save | Esc: quit",
-                 ed.cursor_row + 1, ed.cursor_col + 1, ed.line_count);
-        vui_text(ctx, ctx->rows - 1, 1, st, VUI_GRAY, VUI_SURFACE);
-    }
+    vgfx_rect(ctx, 0, h - 22, w, 22, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
+    char status[128];
+    snprintf(status, sizeof(status), "Ln %d, Col %d | %d lines | Ctrl+S save | Esc close",
+             ed.cursor_row + 1, ed.cursor_col + 1, ed.line_count);
+    vgfx_text(ctx, status, p, h - 6, fs - 2, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+
+    if (ctx->key_pressed && ctx->last_keysym == 0xFF1B) ctx->running = false;
 }
 
 int main(int argc, char *argv[])
 {
-    FILE *lf = fopen("/tmp/vgp-edit.log", "w");
-    if (lf) { setvbuf(lf, NULL, _IOLBF, 0); dup2(fileno(lf), STDERR_FILENO); fclose(lf); }
+    if (argc > 1) load_file(argv[1]);
+    else { ed.lines[0][0] = '\0'; ed.line_count = 1; }
 
-    memset(&ed, 0, sizeof(ed));
-    if (argc > 1)
-        load_file(argv[1]);
-    else {
-        ed.line_count = 1;
-        ed.lines[0][0] = '\0';
-    }
-
-    vui_ctx_t ctx;
-    if (vui_init(&ctx, "VGP Edit", 800, 600) < 0) return 1;
-    vui_run(&ctx, render);
-    vui_destroy(&ctx);
+    vgfx_ctx_t ctx;
+    if (vgfx_init(&ctx, "VGP Edit", 800, 600, 0) < 0) return 1;
+    vgfx_run(&ctx, render);
+    vgfx_destroy(&ctx);
     return 0;
 }

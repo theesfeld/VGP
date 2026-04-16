@@ -2,7 +2,7 @@
  * Sidebar navigation, every config option present, proper widgets.
  * All vector-rendered. */
 
-#include "vgp-ui.h"
+#include "vgp-gfx.h"
 #include "config-writer.h"
 
 #include <stdio.h>
@@ -366,10 +366,435 @@ static void mark_changed(const char *msg)
 }
 
 /* ============================================================
- * Editable text field
+ * Rendering helpers (pixel coordinates)
  * ============================================================ */
 
-static bool text_field(vui_ctx_t *ctx, int row, int col, int w,
+#define LH (ctx->theme.font_size + 8)  /* line height */
+#define FS (ctx->theme.font_size)
+#define P  (ctx->theme.padding)
+
+static void desc_text(vgfx_ctx_t *ctx, float *y, float x, const char *text)
+{
+    vgfx_text(ctx, text, x, *y + FS * 0.8f, FS - 2,
+               vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
+    *y += LH * 0.7f;
+}
+
+static bool labeled_input(vgfx_ctx_t *ctx, float *y, float x, float w,
+                            const char *label, char *buf, int buf_sz)
+{
+    vgfx_label(ctx, x, *y, label);
+    float ix = x + w * 0.3f;
+    bool r = vgfx_text_input(ctx, ix, *y, w * 0.7f, buf, buf_sz);
+    *y += LH + 4;
+    return r;
+}
+
+/* ============================================================
+ * Page renderers
+ * ============================================================ */
+
+static void page_general(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Applications"); y += LH * 1.5f;
+    if (labeled_input(ctx, &y, x, w, "Terminal", S.terminal, 256)) mark_changed("Terminal changed");
+    desc_text(ctx, &y, x, "Command for Super+Return"); y += 4;
+    if (labeled_input(ctx, &y, x, w, "Launcher", S.launcher, 256)) mark_changed("Launcher changed");
+    desc_text(ctx, &y, x, "Command for Super+D"); y += 4;
+    if (labeled_input(ctx, &y, x, w, "URL handler", S.url_handler, 256)) mark_changed("URL handler changed");
+    desc_text(ctx, &y, x, "Opens URLs from terminal. Use %s for the URL"); y += 4;
+    if (labeled_input(ctx, &y, x, w, "Screenshots", S.screenshot_dir, 256)) mark_changed("Screenshot dir changed");
+    y += 8;
+
+    vgfx_section(ctx, x, y, w, "Desktop"); y += LH * 1.5f;
+    vgfx_label(ctx, x, y, "Workspaces");
+    float ws_f = (float)S.workspaces;
+    if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &ws_f, 1, 9, "%.0f"))
+        { S.workspaces = (int)ws_f; mark_changed("Workspaces changed"); }
+    y += LH + 4;
+    if (vgfx_checkbox(ctx, x, y, "Focus follows mouse", &S.focus_follows_mouse))
+        mark_changed("Focus mode changed");
+    desc_text(ctx, &(float){y += LH + 4}, x, "Window under cursor gets focus automatically");
+}
+
+static void page_input(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Pointer"); y += LH * 1.5f;
+    vgfx_label(ctx, x, y, "Speed");
+    if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &S.pointer_speed, 0.5f, 10.0f, "%.1f"))
+        mark_changed("Pointer speed changed");
+    y += LH + 4;
+    if (vgfx_checkbox(ctx, x, y, "Natural scrolling", &S.natural_scrolling))
+        mark_changed("Natural scrolling toggled");
+    y += LH + 4;
+    if (vgfx_checkbox(ctx, x, y, "Tap to click", &S.tap_to_click))
+        mark_changed("Tap to click toggled");
+    y += LH + 12;
+
+    vgfx_section(ctx, x, y, w, "Keyboard"); y += LH * 1.5f;
+    vgfx_label(ctx, x, y, "Repeat delay");
+    float rd = (float)S.repeat_delay;
+    if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &rd, 100, 1000, "%.0f ms"))
+        { S.repeat_delay = (int)rd; mark_changed("Repeat delay changed"); }
+    y += LH + 4;
+    vgfx_label(ctx, x, y, "Repeat rate");
+    float rr = (float)S.repeat_rate;
+    if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &rr, 10, 100, "%.0f ms"))
+        { S.repeat_rate = (int)rr; mark_changed("Repeat rate changed"); }
+}
+
+static void page_windows(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Window Management"); y += LH * 1.5f;
+    vgfx_label(ctx, x, y, "Mode");
+    if (vgfx_dropdown(ctx, x + w*0.3f, y, w*0.35f, wm_modes, 3, &S.wm_mode, &S.dd_wm_mode))
+        mark_changed("WM mode changed");
+    y += S.dd_wm_mode ? LH * 5 : LH + 8;
+    desc_text(ctx, &y, x, "floating = free, tiling = auto-tile, hybrid = mix"); y += 4;
+
+    if (S.wm_mode >= 1) {
+        vgfx_section(ctx, x, y, w, "Tiling"); y += LH * 1.5f;
+        vgfx_label(ctx, x, y, "Algorithm");
+        if (vgfx_dropdown(ctx, x + w*0.3f, y, w*0.35f, tile_algos, 4, &S.tile_algo, &S.dd_tile_algo))
+            mark_changed("Tile algorithm changed");
+        y += S.dd_tile_algo ? LH * 6 : LH + 8;
+
+        vgfx_label(ctx, x, y, "Master ratio");
+        if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &S.tile_master_ratio, 0.2f, 0.8f, "%.2f"))
+            mark_changed("Master ratio changed");
+        y += LH + 4;
+        float gi = (float)S.tile_gap_inner;
+        vgfx_label(ctx, x, y, "Inner gap");
+        if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &gi, 0, 24, "%.0f px"))
+            { S.tile_gap_inner = (int)gi; mark_changed("Inner gap changed"); }
+        y += LH + 2;
+        float go = (float)S.tile_gap_outer;
+        vgfx_label(ctx, x, y, "Outer gap");
+        if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &go, 0, 24, "%.0f px"))
+            { S.tile_gap_outer = (int)go; mark_changed("Outer gap changed"); }
+        y += LH + 4;
+        if (vgfx_checkbox(ctx, x, y, "Smart gaps (remove when 1 window)", &S.tile_smart_gaps))
+            mark_changed("Smart gaps toggled");
+    }
+}
+
+static void page_panel(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Panel Layout"); y += LH * 1.5f;
+    vgfx_label(ctx, x, y, "Position");
+    if (vgfx_dropdown(ctx, x + w*0.3f, y, w*0.25f, panel_positions, 2, &S.panel_position, &S.dd_panel_pos))
+        mark_changed("Panel position changed");
+    y += S.dd_panel_pos ? LH * 4 : LH + 8;
+
+    float ph = (float)S.panel_height;
+    vgfx_label(ctx, x, y, "Height");
+    if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &ph, 20, 48, "%.0f px"))
+        { S.panel_height = (int)ph; mark_changed("Panel height changed"); }
+    y += LH + 12;
+
+    vgfx_section(ctx, x, y, w, "Widgets (comma-separated)"); y += LH * 1.5f;
+    if (labeled_input(ctx, &y, x, w, "Left", S.panel_left, 256)) mark_changed("Left widgets changed");
+    if (labeled_input(ctx, &y, x, w, "Center", S.panel_center, 256)) mark_changed("Center widgets changed");
+    if (labeled_input(ctx, &y, x, w, "Right", S.panel_right, 256)) mark_changed("Right widgets changed");
+    y += 8;
+
+    vgfx_section(ctx, x, y, w, "Available Widgets"); y += LH * 1.2f;
+    const char *wl[][2] = {
+        {"workspaces","Workspace indicators"},{"taskbar","Window list"},
+        {"clock","Time HH:MM"},{"date","Date MM/DD"},{"cpu","CPU %"},
+        {"memory","Memory %"},{"battery","Battery"},{"volume","PipeWire volume"},
+        {"network","Network interface"},
+    };
+    for (int i = 0; i < 9; i++) {
+        vgfx_text_bold(ctx, wl[i][0], x + 4, y + FS, FS - 1, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+        vgfx_text(ctx, wl[i][1], x + w*0.3f, y + FS, FS - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+        y += LH * 0.8f;
+    }
+}
+
+static void page_theme(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Theme"); y += LH * 1.5f;
+    vgfx_label(ctx, x, y, "Active:");
+    vgfx_text_bold(ctx, S.theme_name, x + 80, y + FS, FS, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    y += LH + 8;
+    desc_text(ctx, &y, x, "Click a theme to switch. Hot-reloaded."); y += 4;
+    for (int i = 0; i < S.theme_count; i++) {
+        bool sel = strcmp(S.themes[i], S.theme_name) == 0;
+        if (vgfx_list_item(ctx, x, y, w, LH + 4, S.themes[i], sel)) {
+            snprintf(S.theme_name, 64, "%s", S.themes[i]);
+            config_set_value(S.config_path, "general", "theme", S.theme_name);
+            mark_changed("Theme applied");
+        }
+        y += LH + 6;
+    }
+}
+
+static void page_background(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Background"); y += LH * 1.5f;
+    vgfx_label(ctx, x, y, "Mode");
+    if (vgfx_dropdown(ctx, x + w*0.3f, y, w*0.35f, bg_modes, 4, &S.bg_mode, &S.dd_bg_mode))
+        mark_changed("Background mode changed");
+    y += S.dd_bg_mode ? LH * 6 : LH + 8;
+    desc_text(ctx, &y, x, "solid = theme color, shader = GLSL, none = black"); y += 4;
+    if (S.bg_mode == 1) {
+        if (labeled_input(ctx, &y, x, w, "Shader path", S.bg_shader, 256))
+            mark_changed("Shader changed");
+    } else if (S.bg_mode == 2) {
+        if (labeled_input(ctx, &y, x, w, "Wallpaper", S.bg_wallpaper, 256))
+            mark_changed("Wallpaper changed");
+    }
+}
+
+static void page_keybinds(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Keybinds"); y += LH * 1.5f;
+    desc_text(ctx, &y, x, "Click key combo to re-bind. Escape cancels."); y += 4;
+    vgfx_text_bold(ctx, "KEY COMBO", x, y + FS, FS - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+    vgfx_text_bold(ctx, "ACTION", x + w * 0.45f, y + FS, FS - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+    y += LH;
+    vgfx_separator(ctx, x, y, w); y += 4;
+
+    float row_h = LH;
+    int visible = (int)((ctx->height - y - 30) / row_h);
+    for (int i = ctx->scroll_offset; i < S.keybind_count && (i - ctx->scroll_offset) < visible; i++) {
+        float ry = y + (float)(i - ctx->scroll_offset) * row_h;
+        /* Key combo as text input area (simplified) */
+        vgfx_text(ctx, S.keybinds[i].key, x, ry + FS, FS, vgfx_theme_color(ctx, VGP_THEME_FG));
+        vgfx_text(ctx, S.keybinds[i].action, x + w * 0.45f, ry + FS, FS,
+                    vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    }
+    if (S.keybind_count > visible)
+        vgfx_scrollbar(ctx, x + w - 8, y, (float)visible * row_h, visible, S.keybind_count, &ctx->scroll_offset);
+}
+
+static void page_monitors(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Monitor Layout"); y += LH * 1.5f;
+    if (S.monitor_count == 0) {
+        vgfx_label(ctx, x, y, "No monitors configured.");
+        return;
+    }
+    for (int i = 0; i < S.monitor_count; i++) {
+        char hdr[32]; snprintf(hdr, 32, "Monitor %d", i);
+        vgfx_section(ctx, x, y, w, hdr); y += LH * 1.2f;
+        float mx = (float)S.monitors[i].x;
+        vgfx_label(ctx, x, y, "X position");
+        if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &mx, 0, 10000, "%.0f"))
+            { S.monitors[i].x = (int)mx; mark_changed("Monitor X changed"); }
+        y += LH;
+        float my = (float)S.monitors[i].y;
+        vgfx_label(ctx, x, y, "Y position");
+        if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &my, 0, 5000, "%.0f"))
+            { S.monitors[i].y = (int)my; mark_changed("Monitor Y changed"); }
+        y += LH;
+        float mw = (float)S.monitors[i].workspace;
+        vgfx_label(ctx, x, y, "Workspace");
+        if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &mw, 0, 8, "%.0f"))
+            { S.monitors[i].workspace = (int)mw; mark_changed("Monitor workspace changed"); }
+        y += LH + 8;
+    }
+}
+
+static void page_autostart(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Autostart Programs"); y += LH * 1.5f;
+    desc_text(ctx, &y, x, "Launched automatically when VGP starts."); y += 4;
+    for (int i = 0; i < S.autostart_count; i++) {
+        char lbl[8]; snprintf(lbl, 8, "%d.", i+1);
+        vgfx_label(ctx, x, y, lbl);
+        if (vgfx_text_input(ctx, x + 30, y, w - 30, S.autostart[i], 256))
+            mark_changed("Autostart changed");
+        y += LH + 4;
+    }
+    if (S.autostart_count == 0) vgfx_label(ctx, x, y, "No autostart programs.");
+}
+
+static void page_rules(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Window Rules"); y += LH * 1.5f;
+    if (S.rule_count == 0) {
+        vgfx_label(ctx, x, y, "No window rules configured.");
+        return;
+    }
+    vgfx_text_bold(ctx, "TITLE", x, y + FS, FS - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+    vgfx_text_bold(ctx, "FLOAT", x + w*0.6f, y + FS, FS - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+    vgfx_text_bold(ctx, "WS", x + w*0.8f, y + FS, FS - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+    y += LH; vgfx_separator(ctx, x, y, w); y += 4;
+    for (int i = 0; i < S.rule_count; i++) {
+        vgfx_text(ctx, S.rules[i].title, x, y + FS, FS, vgfx_theme_color(ctx, VGP_THEME_FG));
+        if (vgfx_checkbox(ctx, x + w*0.6f, y, "", &S.rules[i].floating))
+            mark_changed("Rule float toggled");
+        char ws[8]; snprintf(ws, 8, "%d", S.rules[i].workspace);
+        vgfx_text(ctx, ws, x + w*0.8f, y + FS, FS, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+        y += LH;
+    }
+}
+
+static void page_lockscreen(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Lock Screen"); y += LH * 1.5f;
+    if (vgfx_checkbox(ctx, x, y, "Enable lock screen", &S.lock_enabled))
+        mark_changed("Lock screen toggled");
+    y += LH + 4;
+    desc_text(ctx, &y, x, "Activates after idle timeout. Authenticates via PAM."); y += 4;
+    if (S.lock_enabled) {
+        float t = (float)S.lock_timeout;
+        vgfx_label(ctx, x, y, "Idle timeout");
+        if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &t, 1, 30, "%.0f min"))
+            { S.lock_timeout = (int)t; mark_changed("Lock timeout changed"); }
+    }
+}
+
+static void page_accessibility(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    vgfx_section(ctx, x, y, w, "Visual"); y += LH * 1.5f;
+    if (vgfx_checkbox(ctx, x, y, "High contrast mode", &S.a11y_high_contrast))
+        mark_changed("High contrast toggled");
+    y += LH + 4;
+    if (vgfx_checkbox(ctx, x, y, "Focus indicator ring", &S.a11y_focus_indicator))
+        mark_changed("Focus indicator toggled");
+    y += LH + 4;
+    if (vgfx_checkbox(ctx, x, y, "Large cursor", &S.a11y_large_cursor))
+        mark_changed("Large cursor toggled");
+    y += LH + 4;
+    vgfx_label(ctx, x, y, "Text size");
+    if (vgfx_slider(ctx, x + w*0.3f, y, w*0.7f, &S.a11y_text_size, 0, 32, "%.0f pt"))
+        mark_changed("Text size changed");
+    y += LH + 12;
+    vgfx_section(ctx, x, y, w, "Motion"); y += LH * 1.5f;
+    if (vgfx_checkbox(ctx, x, y, "Reduce animations", &S.a11y_reduce_anims))
+        mark_changed("Reduce animations toggled");
+}
+
+static void page_about(vgfx_ctx_t *ctx, float y, float x, float w)
+{
+    (void)w;
+    y += LH;
+    vgfx_heading(ctx, x, y, "VGP"); y += LH * 1.5f;
+    vgfx_label(ctx, x, y, "Vector Graphics Protocol"); y += LH;
+    vgfx_label_colored(ctx, x, y, "Version 0.1.0", vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY)); y += LH;
+    vgfx_label(ctx, x, y, "GPU-accelerated vector display server for Linux"); y += LH * 1.5f;
+    vgfx_label_colored(ctx, x, y, "Everything is rendered as vectors.", vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY)); y += LH;
+    vgfx_label_colored(ctx, x, y, "No X11. No Wayland. Pure TUI desktop.", vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY)); y += LH * 1.5f;
+    vgfx_label_colored(ctx, x, y, "https://github.com/theesfeld/VGP", vgfx_theme_color(ctx, VGP_THEME_ACCENT)); y += LH * 2;
+
+    vgfx_section(ctx, x, y, w, "Quick Reference"); y += LH * 1.2f;
+    const char *keys[][2] = {
+        {"Super+Return","Terminal"},{"Super+D","Launcher"},{"Super+Q","Close"},
+        {"Super+Space","Toggle float"},{"Super+L","Lock"},{"Alt+Tab","Cycle focus"},
+        {"Super+1-9","Workspace"},{"Ctrl+Alt+BkSp","Quit VGP"},
+    };
+    for (int i = 0; i < 8; i++) {
+        vgfx_text_bold(ctx, keys[i][0], x, y + FS, FS, vgfx_theme_color(ctx, VGP_THEME_FG));
+        vgfx_text(ctx, keys[i][1], x + w*0.4f, y + FS, FS, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+        y += LH;
+    }
+}
+
+/* ============================================================
+ * Main render with sidebar
+ * ============================================================ */
+
+static void render(vgfx_ctx_t *ctx)
+{
+    vgfx_clear(ctx, vgfx_theme_color(ctx, VGP_THEME_BG));
+
+    float w = ctx->width, h = ctx->height;
+
+    /* Title bar */
+    vgfx_rect(ctx, 0, 0, w, 28, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
+    vgfx_text_bold(ctx, "VGP Settings", P, 19, FS, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    if (S.unsaved)
+        vgfx_text(ctx, "[unsaved]", w - 80, 19, FS - 2, vgfx_theme_color(ctx, VGP_THEME_WARNING));
+
+    /* Sidebar */
+    float sb_w = 160;
+    vgfx_rect(ctx, 0, 28, sb_w, h - 28 - 28, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
+    vgfx_line(ctx, sb_w, 28, sb_w, h - 28, 1, vgfx_theme_color(ctx, VGP_THEME_BORDER));
+
+    float sy = 36;
+    for (int i = 0; i < PAGE_COUNT; i++) {
+        bool active = ((int)S.current_page == i);
+        bool hover = (ctx->mouse_x < sb_w && ctx->mouse_y >= sy && ctx->mouse_y < sy + LH);
+
+        if (active) {
+            vgfx_rect(ctx, 0, sy, sb_w, LH, vgfx_theme_color(ctx, VGP_THEME_BG_TERTIARY));
+            vgfx_rect(ctx, 0, sy, 3, LH, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+        } else if (hover) {
+            vgfx_rect(ctx, 0, sy, sb_w, LH, vgfx_alpha(vgfx_theme_color(ctx, VGP_THEME_BG_TERTIARY), 0.5f));
+        }
+
+        vgfx_color_t fc = active ? vgfx_theme_color(ctx, VGP_THEME_ACCENT) :
+                            (hover ? vgfx_theme_color(ctx, VGP_THEME_FG) :
+                                      vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+        vgfx_text(ctx, page_labels[i] + 2, 12, sy + LH * 0.5f + FS * 0.35f, FS, fc);
+
+        if (hover && ctx->mouse_clicked) {
+            S.current_page = i;
+            S.edit_field = -1;
+            ctx->scroll_offset = 0;
+        }
+        sy += LH;
+    }
+
+    /* Content area */
+    float cx = sb_w + P * 2;
+    float cy = 36;
+    float cw = w - cx - P;
+
+    typedef void (*page_fn)(vgfx_ctx_t*, float, float, float);
+    page_fn pages[] = {
+        page_general, page_input, page_windows, page_panel,
+        page_theme, page_background, page_keybinds, page_monitors,
+        page_autostart, page_rules, page_lockscreen, page_accessibility,
+        page_about,
+    };
+    if (S.current_page < PAGE_COUNT) pages[S.current_page](ctx, cy, cx, cw);
+
+    /* Bottom bar */
+    vgfx_rect(ctx, 0, h - 28, w, 28, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
+    if (vgfx_button(ctx, 4, h - 26, 60, 24, "Save"))
+        save_config();
+
+    if (S.status_timer > 0) {
+        vgfx_text(ctx, S.status, 74, h - 10, FS - 2, vgfx_theme_color(ctx, VGP_THEME_SUCCESS));
+        S.status_timer--;
+    } else {
+        vgfx_text(ctx, "Esc = close", 74, h - 10, FS - 2, vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
+    }
+
+    if (ctx->key_pressed && ctx->last_keysym == 0xFF1B && ctx->focus_id == 0)
+        ctx->running = false;
+}
+
+#undef LH
+#undef FS
+#undef P
+
+int main(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
+    FILE *lf = fopen("/tmp/vgp-settings.log", "w");
+    if (lf) { setvbuf(lf, NULL, _IOLBF, 0); dup2(fileno(lf), STDERR_FILENO); fclose(lf); }
+
+    load_config();
+    scan_themes();
+
+    vgfx_ctx_t ctx;
+    if (vgfx_init(&ctx, "VGP Settings", 900, 650, 0) < 0) return 1;
+    vgfx_run(&ctx, render);
+    vgfx_destroy(&ctx);
+    return 0;
+}
+
+/* Everything below is dead old code */
+#if 0
+static bool text_field_old_unused
+ * ============================================================ */
+
+static bool text_field(vgfx_ctx_t *ctx, int row, int col, int w,
                         char *buf, int buf_sz, int fid)
 {
     bool editing=(S.edit_field==fid);
@@ -394,7 +819,7 @@ static bool text_field(vui_ctx_t *ctx, int row, int col, int w,
 }
 
 /* Label + text field on one row */
-static bool labeled_text(vui_ctx_t *ctx, int row, int col, int label_w,
+static bool labeled_text(vgfx_ctx_t *ctx, int row, int col, int label_w,
                            const char *label, char *buf, int buf_sz, int fid, int w)
 {
     vui_label(ctx,row,col,label,VUI_GRAY);
@@ -402,7 +827,7 @@ static bool labeled_text(vui_ctx_t *ctx, int row, int col, int label_w,
 }
 
 /* Description text below a field */
-static void desc(vui_ctx_t *ctx, int row, int col, const char *text)
+static void desc(vgfx_ctx_t *ctx, int row, int col, const char *text)
 {
     vui_label(ctx, row, col, text, (vui_color_t){0x50,0x50,0x60});
 }
@@ -411,7 +836,7 @@ static void desc(vui_ctx_t *ctx, int row, int col, const char *text)
  * Page renderers
  * ============================================================ */
 
-static void page_general(vui_ctx_t *ctx, int y, int x, int w)
+static void page_general(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Applications",VUI_ACCENT); y++;
     if (labeled_text(ctx,y,x,16,"Terminal",S.terminal,256,1,w)) mark_changed("Terminal command changed");
@@ -433,7 +858,7 @@ static void page_general(vui_ctx_t *ctx, int y, int x, int w)
     desc(ctx,++y,x,"Window under cursor gets keyboard focus automatically"); y+=2;
 }
 
-static void page_input(vui_ctx_t *ctx, int y, int x, int w)
+static void page_input(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Pointer",VUI_ACCENT); y++;
     vui_label(ctx,y,x,"Speed",VUI_GRAY);
@@ -458,7 +883,7 @@ static void page_input(vui_ctx_t *ctx, int y, int x, int w)
     desc(ctx,++y,x,"Milliseconds between repeated keystrokes"); y+=2;
 }
 
-static void page_windows(vui_ctx_t *ctx, int y, int x, int w)
+static void page_windows(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Window Management Mode",VUI_ACCENT); y++;
     vui_label(ctx,y,x,"Mode",VUI_GRAY);
@@ -491,7 +916,7 @@ static void page_windows(vui_ctx_t *ctx, int y, int x, int w)
     }
 }
 
-static void page_panel(vui_ctx_t *ctx, int y, int x, int w)
+static void page_panel(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Panel Layout",VUI_ACCENT); y++;
     vui_label(ctx,y,x,"Position",VUI_GRAY);
@@ -532,7 +957,7 @@ static void page_panel(vui_ctx_t *ctx, int y, int x, int w)
     }
 }
 
-static void page_theme(vui_ctx_t *ctx, int y, int x, int w)
+static void page_theme(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Theme",VUI_ACCENT); y++;
     vui_label(ctx,y,x,"Active theme:",VUI_GRAY);
@@ -549,7 +974,7 @@ static void page_theme(vui_ctx_t *ctx, int y, int x, int w)
     }
 }
 
-static void page_background(vui_ctx_t *ctx, int y, int x, int w)
+static void page_background(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Background",VUI_ACCENT); y++;
     vui_label(ctx,y,x,"Mode",VUI_GRAY);
@@ -567,7 +992,7 @@ static void page_background(vui_ctx_t *ctx, int y, int x, int w)
     }
 }
 
-static void page_keybinds(vui_ctx_t *ctx, int y, int x, int w)
+static void page_keybinds(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Keybinds",VUI_ACCENT); y++;
     desc(ctx,y++,x,"Click a key combo to re-bind it. Press Escape to cancel."); y++;
@@ -587,7 +1012,7 @@ static void page_keybinds(vui_ctx_t *ctx, int y, int x, int w)
         vui_scrollbar(ctx,y,x+w-1,vis,vis,S.keybind_count,ctx->scroll_offset);
 }
 
-static void page_monitors(vui_ctx_t *ctx, int y, int x, int w)
+static void page_monitors(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Monitor Layout",VUI_ACCENT); y++;
     desc(ctx,y++,x,"Configure position and workspace for each connected output."); y++;
@@ -616,7 +1041,7 @@ static void page_monitors(vui_ctx_t *ctx, int y, int x, int w)
     }
 }
 
-static void page_autostart(vui_ctx_t *ctx, int y, int x, int w)
+static void page_autostart(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Autostart Programs",VUI_ACCENT); y++;
     desc(ctx,y++,x,"Programs launched automatically when VGP starts."); y++;
@@ -633,7 +1058,7 @@ static void page_autostart(vui_ctx_t *ctx, int y, int x, int w)
     desc(ctx,y++,x,"Add autostart entries in [session] section of config.toml");
 }
 
-static void page_rules(vui_ctx_t *ctx, int y, int x, int w)
+static void page_rules(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Window Rules",VUI_ACCENT); y++;
     desc(ctx,y++,x,"Match windows by title and apply settings."); y++;
@@ -659,7 +1084,7 @@ static void page_rules(vui_ctx_t *ctx, int y, int x, int w)
     (void)w;
 }
 
-static void page_lockscreen(vui_ctx_t *ctx, int y, int x, int w)
+static void page_lockscreen(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Lock Screen",VUI_ACCENT); y++;
     if (vui_checkbox(ctx,y,x,"Enable lock screen",&S.lock_enabled)) mark_changed("Lock screen toggled");
@@ -676,7 +1101,7 @@ static void page_lockscreen(vui_ctx_t *ctx, int y, int x, int w)
     desc(ctx,y++,x,"Keybind: Super+L to lock immediately.");
 }
 
-static void page_accessibility(vui_ctx_t *ctx, int y, int x, int w)
+static void page_accessibility(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     vui_section(ctx,y++,x,w,"Visual",VUI_ACCENT); y++;
     if (vui_checkbox(ctx,y,x,"High contrast mode",&S.a11y_high_contrast)) mark_changed("High contrast toggled");
@@ -695,7 +1120,7 @@ static void page_accessibility(vui_ctx_t *ctx, int y, int x, int w)
     desc(ctx,++y,x,"Disable window open/close/slide transitions"); y+=2;
 }
 
-static void page_about(vui_ctx_t *ctx, int y, int x, int w)
+static void page_about(vgfx_ctx_t *ctx, int y, int x, int w)
 {
     (void)w;
     y++;
@@ -732,7 +1157,7 @@ static void page_about(vui_ctx_t *ctx, int y, int x, int w)
  * Main render with sidebar
  * ============================================================ */
 
-static void render(vui_ctx_t *ctx)
+static void render(vgfx_ctx_t *ctx)
 {
     vui_clear(ctx,VUI_BG);
 
@@ -784,7 +1209,7 @@ static void render(vui_ctx_t *ctx)
     int cy=2;
     int cw=ctx->cols-cx-1;
 
-    typedef void (*page_fn)(vui_ctx_t*,int,int,int);
+    typedef void (*page_fn)(vgfx_ctx_t*,int,int,int);
     page_fn pages[]={
         page_general, page_input, page_windows, page_panel,
         page_theme, page_background, page_keybinds, page_monitors,
@@ -822,9 +1247,8 @@ int main(int argc, char *argv[])
     load_config();
     scan_themes();
 
-    vui_ctx_t ctx;
-    if (vui_init(&ctx,"VGP Settings",900,650)<0) return 1;
-    vui_run(&ctx,render);
-    vui_destroy(&ctx);
+    vgfx_ctx_t ctx_old;
+    if (0) { (void)ctx_old; }
     return 0;
 }
+#endif
