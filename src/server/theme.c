@@ -10,13 +10,13 @@
 
 void vgp_theme_load_defaults(vgp_theme_t *theme)
 {
-    /* Geometry -- angular MFD style */
-    theme->titlebar_height = 26.0f;
+    /* Geometry -- larger readable HUD style */
+    theme->titlebar_height = 32.0f;
     theme->border_width = 1.0f;
-    theme->corner_radius = 6.0f;
-    theme->button_radius = 4.0f;
-    theme->button_spacing = 10.0f;
-    theme->button_margin_right = 14.0f;
+    theme->corner_radius = 8.0f;
+    theme->button_radius = 5.0f;
+    theme->button_spacing = 12.0f;
+    theme->button_margin_right = 16.0f;
 
     /* F-16 HUD colors: white/red/yellow on black */
     theme->titlebar_active   = (vgp_color_t){0.04f, 0.04f, 0.05f, 0.10f}; /* barely-visible glass */
@@ -32,12 +32,12 @@ void vgp_theme_load_defaults(vgp_theme_t *theme)
     theme->background        = vgp_color_hex(0x000000); /* pure black */
     theme->statusbar_bg      = (vgp_color_t){0.03f, 0.03f, 0.04f, 0.08f}; /* glass */
     theme->statusbar_text    = vgp_color_hex(0xEEEEDD);
-    theme->content_bg        = (vgp_color_t){0.02f, 0.02f, 0.03f, 0.88f}; /* dark readability */
+    theme->content_bg        = (vgp_color_t){0.02f, 0.02f, 0.03f, 0.55f}; /* translucent glass */
 
-    /* Font sizes */
-    theme->title_font_size = 12.0f;
-    theme->statusbar_font_size = 11.0f;
-    theme->statusbar_height = 24.0f;
+    /* Font sizes -- larger for readability */
+    theme->title_font_size = 15.0f;
+    theme->statusbar_font_size = 14.0f;
+    theme->statusbar_height = 30.0f;
 
     /* Background */
     theme->background_mode = 1; /* shader by default */

@@ -1,98 +1,92 @@
-/* VGP Tactical System Monitor -- Fighter Jet HUD
- * 3D wireframe sphere, per-core CPU, GPU, horizon indicator,
- * tape scales, trace waveforms. NERV/F-16 aesthetic.
- * Renders at 60fps with continuous animation. */
+/* VGP System Monitor -- F-16 Engine Page Style
+ *
+ * Clean labeled bar gauges. Every element signifies data.
+ *
+ * Layout:
+ *   Top row: CPU | MEM | GPU | SWP -- labeled vertical bar gauges
+ *   Middle:  Per-core bars (0, 1, 2, ..., N) with numeric labels
+ *   Bottom:  Data fields -- hostname, uptime, load, processes, net, disk
+ */
 
 #include "vgp-gfx.h"
-#include "vgp-gfx-3d.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <time.h>
 #include <unistd.h>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846f
-#endif
+#define MAX_CORES 64
 
 /* ============================================================
- * Data
+ * Data collection
  * ============================================================ */
 
-#define MAX_CORES 64
-#define HIST 200
-
 static struct {
-    /* Per-core CPU */
+    /* Aggregate CPU */
+    float cpu_total;
+    long  prev_idle, prev_total;
+
+    /* Per-core */
     float core[MAX_CORES];
     long  core_prev_idle[MAX_CORES];
     long  core_prev_total[MAX_CORES];
     int   num_cores;
-    float cpu_total;
-    float cpu_hist[HIST];
 
     /* Memory */
-    long  mem_total_kb, mem_avail_kb;
-    long  swap_total_kb, swap_free_kb;
+    long mem_total_kb, mem_avail_kb;
+    long swap_total_kb, swap_free_kb;
     float mem_pct, swap_pct;
-    float mem_hist[HIST];
 
     /* GPU */
     float gpu_pct;
-    float gpu_hist[HIST];
-    char  gpu_name[64];
     bool  gpu_ok;
 
     /* Network */
-    long  prev_rx, prev_tx;
-    float net_rx, net_tx; /* normalized 0-1 */
-    float net_rx_hist[HIST];
+    long prev_rx, prev_tx;
+    long rx_bytes_per_sec, tx_bytes_per_sec;
+
+    /* Disk */
+    long prev_reads, prev_writes;
+    long disk_reads_per_sec, disk_writes_per_sec;
 
     /* System */
     float uptime;
     float load[3];
     int   procs;
     char  hostname[64];
-
-    int   head;
-    float t; /* animation time */
+    char  kernel[64];
 } D;
 
 static void sample(void)
 {
-    /* Per-core CPU */
+    /* CPU aggregate + per-core */
     FILE *f = fopen("/proc/stat", "r");
     if (f) {
         char line[256];
-        int core_idx = -1;
         while (fgets(line, sizeof(line), f)) {
             if (strncmp(line, "cpu", 3) != 0) break;
             long u,n,s,id,io,ir,si,st;
-            if (line[3] == ' ') { /* aggregate */
+            if (line[3] == ' ') {
                 if (sscanf(line+4, "%ld %ld %ld %ld %ld %ld %ld %ld", &u,&n,&s,&id,&io,&ir,&si,&st) == 8) {
                     long total = u+n+s+id+io+ir+si+st;
-                    long di = id - D.core_prev_idle[0];
-                    long dt = total - D.core_prev_total[0];
+                    long di = id - D.prev_idle, dt = total - D.prev_total;
                     if (dt > 0) D.cpu_total = (float)(dt-di)/(float)dt;
-                    D.core_prev_idle[0] = id; D.core_prev_total[0] = total;
+                    D.prev_idle = id; D.prev_total = total;
                 }
-                continue;
-            }
-            core_idx++;
-            if (core_idx >= MAX_CORES) continue;
-            int ci = 0;
-            if (sscanf(line, "cpu%d %ld %ld %ld %ld %ld %ld %ld %ld", &ci, &u,&n,&s,&id,&io,&ir,&si,&st) == 9) {
-                long total = u+n+s+id+io+ir+si+st;
-                int idx = ci + 1; /* offset: [0] is aggregate */
-                if (idx < MAX_CORES) {
-                    long di = id - D.core_prev_idle[idx];
-                    long dt = total - D.core_prev_total[idx];
-                    if (dt > 0) D.core[ci] = (float)(dt-di)/(float)dt;
-                    D.core_prev_idle[idx] = id; D.core_prev_total[idx] = total;
+            } else {
+                int ci = 0;
+                if (sscanf(line, "cpu%d %ld %ld %ld %ld %ld %ld %ld %ld", &ci, &u,&n,&s,&id,&io,&ir,&si,&st) == 9) {
+                    if (ci < MAX_CORES) {
+                        long total = u+n+s+id+io+ir+si+st;
+                        long di = id - D.core_prev_idle[ci];
+                        long dt = total - D.core_prev_total[ci];
+                        if (dt > 0) D.core[ci] = (float)(dt-di)/(float)dt;
+                        D.core_prev_idle[ci] = id;
+                        D.core_prev_total[ci] = total;
+                        if (ci + 1 > D.num_cores) D.num_cores = ci + 1;
+                    }
                 }
-                if (ci >= D.num_cores) D.num_cores = ci + 1;
             }
         }
         fclose(f);
@@ -115,366 +109,342 @@ static void sample(void)
 
     /* GPU */
     D.gpu_ok = false;
-    /* Try AMD */
     f = fopen("/sys/class/drm/card0/device/gpu_busy_percent", "r");
     if (!f) f = fopen("/sys/class/drm/card1/device/gpu_busy_percent", "r");
-    if (f) { int g; if (fscanf(f,"%d",&g)==1) { D.gpu_pct=(float)g/100.0f; D.gpu_ok=true; } fclose(f); }
-    /* Try Intel */
-    if (!D.gpu_ok) {
-        f = fopen("/sys/class/drm/card0/gt/gt_cur_freq_mhz", "r");
-        if (f) {
-            int cur = 0; fscanf(f,"%d",&cur); fclose(f);
-            f = fopen("/sys/class/drm/card0/gt/gt_max_freq_mhz", "r");
-            if (f) { int mx = 0; fscanf(f,"%d",&mx); fclose(f);
-                if (mx > 0) { D.gpu_pct = (float)cur/(float)mx; D.gpu_ok = true; } }
-        }
-    }
+    if (f) { int g; if (fscanf(f,"%d",&g)==1) { D.gpu_pct = (float)g/100.0f; D.gpu_ok = true; } fclose(f); }
 
     /* Network */
     f = fopen("/proc/net/dev", "r");
     if (f) {
         char line[512];
         fgets(line,sizeof(line),f); fgets(line,sizeof(line),f);
+        long rx_total = 0, tx_total = 0;
         while (fgets(line,sizeof(line),f)) {
             char iface[32]; long rx=0, tx=0;
             if (sscanf(line," %31[^:]:%ld %*d %*d %*d %*d %*d %*d %*d %ld", iface,&rx,&tx)>=3) {
                 char *p = iface; while(*p==' ') p++;
                 if (strcmp(p,"lo")==0) continue;
-                if (D.prev_rx > 0) {
-                    long drx = rx-D.prev_rx, dtx = tx-D.prev_tx;
-                    D.net_rx = (float)drx/1000000.0f; if (D.net_rx>1) D.net_rx=1;
-                    D.net_tx = (float)dtx/1000000.0f; if (D.net_tx>1) D.net_tx=1;
-                }
-                D.prev_rx=rx; D.prev_tx=tx;
-                break;
+                rx_total += rx; tx_total += tx;
             }
         }
         fclose(f);
+        if (D.prev_rx > 0) {
+            D.rx_bytes_per_sec = rx_total - D.prev_rx;
+            D.tx_bytes_per_sec = tx_total - D.prev_tx;
+            if (D.rx_bytes_per_sec < 0) D.rx_bytes_per_sec = 0;
+            if (D.tx_bytes_per_sec < 0) D.tx_bytes_per_sec = 0;
+        }
+        D.prev_rx = rx_total; D.prev_tx = tx_total;
     }
 
-    /* System */
-    f = fopen("/proc/uptime","r");
+    /* Disk I/O (first device from /proc/diskstats) */
+    f = fopen("/proc/diskstats", "r");
+    if (f) {
+        char line[256];
+        long reads_total = 0, writes_total = 0;
+        while (fgets(line, sizeof(line), f)) {
+            int maj, min;
+            char dev[32];
+            long reads, writes;
+            if (sscanf(line, "%d %d %31s %ld %*d %*d %*d %ld", &maj, &min, dev, &reads, &writes) == 5) {
+                /* Only physical disks (skip loop, ram, dm-*) */
+                if (dev[0] == 'l' || dev[0] == 'r' || (dev[0] == 'd' && dev[1] == 'm')) continue;
+                /* Skip partitions (sda1, nvme0n1p1) -- only whole disks */
+                size_t len = strlen(dev);
+                if (len > 0 && dev[len-1] >= '0' && dev[len-1] <= '9' && dev[0] != 'n') continue;
+                reads_total += reads;
+                writes_total += writes;
+            }
+        }
+        fclose(f);
+        if (D.prev_reads > 0) {
+            D.disk_reads_per_sec = reads_total - D.prev_reads;
+            D.disk_writes_per_sec = writes_total - D.prev_writes;
+            if (D.disk_reads_per_sec < 0) D.disk_reads_per_sec = 0;
+            if (D.disk_writes_per_sec < 0) D.disk_writes_per_sec = 0;
+        }
+        D.prev_reads = reads_total; D.prev_writes = writes_total;
+    }
+
+    /* Uptime / load / procs */
+    f = fopen("/proc/uptime", "r");
     if (f) { fscanf(f,"%f",&D.uptime); fclose(f); }
-    f = fopen("/proc/loadavg","r");
+    f = fopen("/proc/loadavg", "r");
     if (f) { fscanf(f,"%f %f %f",&D.load[0],&D.load[1],&D.load[2]); fclose(f); }
     if (!D.hostname[0]) gethostname(D.hostname, sizeof(D.hostname));
-    f = popen("ls -1d /proc/[0-9]* 2>/dev/null | wc -l","r");
+    if (!D.kernel[0]) {
+        f = fopen("/proc/sys/kernel/osrelease", "r");
+        if (f) { fscanf(f, "%63s", D.kernel); fclose(f); }
+    }
+    f = popen("ls -1d /proc/[0-9]* 2>/dev/null | wc -l", "r");
     if (f) { fscanf(f,"%d",&D.procs); pclose(f); }
-
-    /* History */
-    D.cpu_hist[D.head] = D.cpu_total;
-    D.mem_hist[D.head] = D.mem_pct;
-    D.gpu_hist[D.head] = D.gpu_pct;
-    D.net_rx_hist[D.head] = D.net_rx;
-    D.head = (D.head + 1) % HIST;
 }
 
 /* ============================================================
- * HUD Colors
+ * HUD colors
  * ============================================================ */
 
-static vgfx_color_t HG, HD, HB, HW, HR, HBG;
+static vgfx_color_t C_FG, C_DIM, C_HI, C_WARN, C_CRIT, C_BG;
 
 static void init_colors(void) {
-    HG  = vgfx_rgba(0.93f, 0.93f, 0.93f, 0.9f); /* white (primary) */
-    HD  = vgfx_rgba(0.4f, 0.4f, 0.4f, 0.5f);    /* dim gray */
-    HB  = vgfx_rgba(1.0f, 1.0f, 1.0f, 1.0f);    /* bright white */
-    HW  = vgfx_rgba(1.0f, 0.84f, 0.0f, 1.0f);   /* yellow highlight */
-    HR  = vgfx_rgba(1.0f, 0.2f, 0.2f, 1.0f);    /* red/critical */
-    HBG = vgfx_rgba(0.0f, 0.0f, 0.0f, 1.0f);    /* pure black */
+    C_FG   = vgfx_rgba(0.95f, 0.95f, 0.95f, 1.0f);  /* primary white */
+    C_DIM  = vgfx_rgba(0.45f, 0.45f, 0.45f, 1.0f);  /* dim gray */
+    C_HI   = vgfx_rgba(1.0f, 1.0f, 1.0f, 1.0f);     /* bright white */
+    C_WARN = vgfx_rgba(1.0f, 0.85f, 0.0f, 1.0f);    /* yellow */
+    C_CRIT = vgfx_rgba(1.0f, 0.3f, 0.3f, 1.0f);     /* red */
+    C_BG   = vgfx_rgba(0.0f, 0.0f, 0.0f, 0.0f);     /* transparent */
 }
 
 static vgfx_color_t usage_color(float v) {
-    if (v > 0.9f) return HR;
-    if (v > 0.75f) return HW;
-    return HG;
+    if (v >= 0.90f) return C_CRIT;
+    if (v >= 0.75f) return C_WARN;
+    return C_FG;
 }
 
 /* ============================================================
- * HUD Elements
+ * HUD instrument: labeled vertical bar gauge
+ *
+ * +------+
+ * | LBL  |   <- ETCHED label (static)
+ * +------+
+ * | 67%  |   <- PROJECTED value (dynamic)
+ * |------|
+ * |##### |   <- bar fills bottom-up
+ * |##### |
+ * |##### |
+ * |      |
+ * +------+
  * ============================================================ */
 
-/* Scanlines */
-static void draw_scanlines(vgfx_ctx_t *c, float w, float h)
+static void draw_bar_gauge(vgfx_ctx_t *ctx, float x, float y, float w, float h,
+                             const char *label, float value /* 0..1 */)
 {
-    for (float y = 0; y < h; y += 3)
-        vgfx_line(c, 0, y, w, y, 0.3f, vgfx_rgba(0, 0.04f, 0, 0.2f));
-}
+    float fs = 14.0f;
+    vgfx_color_t col = usage_color(value);
 
-/* Corner brackets */
-static void draw_frame(vgfx_ctx_t *c, float w, float h)
-{
-    float s = 25, lw = 1.5f;
-    vgfx_line(c,2,2,2+s,2,lw,HG); vgfx_line(c,2,2,2,2+s,lw,HG);
-    vgfx_line(c,w-2,2,w-2-s,2,lw,HG); vgfx_line(c,w-2,2,w-2,2+s,lw,HG);
-    vgfx_line(c,2,h-2,2+s,h-2,lw,HG); vgfx_line(c,2,h-2,2,h-2-s,lw,HG);
-    vgfx_line(c,w-2,h-2,w-2-s,h-2,lw,HG); vgfx_line(c,w-2,h-2,w-2,h-2-s,lw,HG);
-}
+    /* ETCHED label (static) */
+    float lw_text = vgfx_text_width(ctx, label, -1, fs);
+    float lx = x + (w - lw_text) * 0.5f;
+    /* Shadow below-right */
+    vgfx_text(ctx, label, lx + 0.6f, y + fs + 0.6f, fs, vgfx_rgba(0, 0, 0, 0.5f));
+    /* Highlight above-left */
+    vgfx_text(ctx, label, lx - 0.3f, y + fs - 0.3f, fs, vgfx_rgba(1, 1, 1, 0.12f));
+    /* Main */
+    vgfx_text_bold(ctx, label, lx, y + fs, fs, C_FG);
 
-/* Vertical tape scale */
-static void draw_tape(vgfx_ctx_t *c, float x, float y, float w, float h,
-                        float val, const char *label, bool right)
-{
-    float fs = 10, lw = 1.0f;
-    vgfx_rect_outline(c, x, y, w, h, lw, HG);
-    vgfx_text_bold(c, label, x+2, y-2, fs, HG);
+    /* PROJECTED value (dynamic) */
+    char val[8];
+    snprintf(val, sizeof(val), "%3.0f%%", value * 100.0f);
+    float vw_text = vgfx_text_width(ctx, val, -1, fs);
+    float vx = x + (w - vw_text) * 0.5f;
+    float vy = y + fs * 2.8f;
+    vgfx_text_bold(ctx, val, vx, vy, fs, col);
 
-    /* Value box */
-    float bh = 18, by = y + h*0.5f - bh*0.5f;
-    char val_s[16]; snprintf(val_s, sizeof(val_s), "%3.0f", val);
-    if (right) {
-        vgfx_rect(c, x+w, by, 36, bh, HBG);
-        vgfx_rect_outline(c, x+w, by, 36, bh, lw, HB);
-        vgfx_text_bold(c, val_s, x+w+3, by+14, fs, HB);
-    } else {
-        vgfx_rect(c, x-36, by, 36, bh, HBG);
-        vgfx_rect_outline(c, x-36, by, 36, bh, lw, HB);
-        vgfx_text_bold(c, val_s, x-33, by+14, fs, HB);
+    /* Bar outline -- ETCHED box */
+    float bar_top = y + fs * 4.0f;
+    float bar_bot = y + h - fs * 0.6f;
+    float bar_h = bar_bot - bar_top;
+    vgfx_rect_outline(ctx, x, bar_top, w, bar_h, 1.0f, C_DIM);
+
+    /* Tick marks at 25%, 50%, 75% */
+    for (int i = 1; i <= 3; i++) {
+        float ty = bar_bot - (float)i * 0.25f * bar_h;
+        vgfx_line(ctx, x, ty, x + 4, ty, 0.8f, C_DIM);
+        vgfx_line(ctx, x + w - 4, ty, x + w, ty, 0.8f, C_DIM);
     }
 
-    /* Scrolling ticks */
-    vgfx_push_clip(c, x+1, y+1, w-2, h-2);
-    float cy = y + h*0.5f;
-    float ppu = h / 50.0f;
-    for (int v = (int)(val-25); v <= (int)(val+25); v++) {
-        if (v < 0 || v > 100) continue;
-        float ty = cy - ((float)v - val) * ppu;
-        bool major = (v%10==0);
-        float tw = major ? w*0.4f : w*0.15f;
-        vgfx_color_t tc = (v >= 80) ? HW : HG;
-        if (right) vgfx_line(c, x, ty, x+tw, ty, major?1.2f:0.6f, tc);
-        else vgfx_line(c, x+w-tw, ty, x+w, ty, major?1.2f:0.6f, tc);
-        if (major) {
-            char n[8]; snprintf(n,sizeof(n),"%d",v);
-            float tx = right ? x+tw+2 : x+w-tw-20;
-            vgfx_text(c, n, tx, ty+4, fs-2, tc);
-        }
-    }
-    vgfx_pop_clip(c);
+    /* PROJECTED fill (dynamic) -- bottom up */
+    float fill_h = bar_h * value;
+    if (fill_h < 0) fill_h = 0;
+    if (fill_h > bar_h) fill_h = bar_h;
+    vgfx_rect(ctx, x + 1, bar_bot - fill_h, w - 2, fill_h, col);
 }
 
-/* Trace waveform */
-static void draw_trace(vgfx_ctx_t *c, float x, float y, float w, float h,
-                          float *data, int head, vgfx_color_t col, const char *label)
-{
-    vgfx_rect_outline(c, x, y, w, h, 0.6f, HD);
-    vgfx_text(c, label, x+3, y+10, 8, col);
-    for (int i = 1; i < 4; i++)
-        vgfx_line(c, x, y+h*(float)i/4, x+w, y+h*(float)i/4, 0.3f, HD);
-    float step = w / (float)(HIST-1);
-    for (int i = 1; i < HIST; i++) {
-        int i0 = (head+i-1)%HIST, i1 = (head+i)%HIST;
-        vgfx_line(c, x+(float)(i-1)*step, y+h*(1-data[i0]),
-                    x+(float)i*step, y+h*(1-data[i1]), 1.0f, col);
-    }
-}
+/* ============================================================
+ * Per-core bar strip
+ * ============================================================ */
 
-/* Per-core bars */
-static void draw_core_bars(vgfx_ctx_t *c, float x, float y, float w, float h)
+static void draw_core_strip(vgfx_ctx_t *ctx, float x, float y, float w, float h)
 {
+    float fs = 10.0f;
+    /* ETCHED label */
+    vgfx_text(ctx, "CORES", x, y + fs, 12.0f, C_DIM);
+
+    float top = y + fs * 2.0f;
+    float bottom = y + h;
+    float bar_h = bottom - top - 14.0f; /* leave room for bottom labels */
+
     if (D.num_cores <= 0) return;
-    float bar_w = w / (float)D.num_cores - 2;
-    if (bar_w < 2) bar_w = 2;
+    float bar_w = (w - (float)(D.num_cores - 1) * 3.0f) / (float)D.num_cores;
+    if (bar_w < 8) bar_w = 8;
+
     for (int i = 0; i < D.num_cores; i++) {
-        float bx = x + (float)i * (bar_w + 2);
-        vgfx_rect_outline(c, bx, y, bar_w, h, 0.5f, HD);
-        float fill = D.core[i] * h;
-        vgfx_rect(c, bx, y+h-fill, bar_w, fill, usage_color(D.core[i]));
-        if (bar_w >= 6) {
-            char n[4]; snprintf(n,sizeof(n),"%d",i);
-            vgfx_text(c, n, bx+1, y+h+9, 7, HD);
-        }
+        float bx = x + (float)i * (bar_w + 3.0f);
+        float v = D.core[i];
+        vgfx_color_t col = usage_color(v);
+
+        /* Bar outline */
+        vgfx_rect_outline(ctx, bx, top, bar_w, bar_h, 0.8f, C_DIM);
+
+        /* Fill */
+        float fh = bar_h * v;
+        if (fh > 0 && fh <= bar_h)
+            vgfx_rect(ctx, bx + 1, top + bar_h - fh, bar_w - 2, fh, col);
+
+        /* Core number (ETCHED below bar) */
+        char n[8]; snprintf(n, sizeof(n), "%d", i);
+        float nw = vgfx_text_width(ctx, n, -1, fs);
+        vgfx_text(ctx, n, bx + (bar_w - nw) * 0.5f, bottom - 3, fs, C_DIM);
     }
 }
 
 /* ============================================================
- * Main HUD render
+ * Data field: LABEL [VALUE]
  * ============================================================ */
 
-static vgfx_mesh_t *sphere = NULL;
-static float sphere_angle = 0;
+static void draw_field(vgfx_ctx_t *ctx, float x, float y, float label_w,
+                         const char *label, const char *value,
+                         vgfx_color_t value_color)
+{
+    float fs = 13.0f;
+    /* ETCHED label */
+    vgfx_text(ctx, label, x, y + fs, fs, C_DIM);
+    /* PROJECTED value */
+    vgfx_text_bold(ctx, value, x + label_w, y + fs, fs, value_color);
+}
+
+/* ============================================================
+ * Main render
+ * ============================================================ */
 
 static void render(vgfx_ctx_t *ctx)
 {
-    D.t += 0.016f;
-    float w = ctx->width, h = ctx->height;
+    static int tick = 0;
+    if (++tick >= 60) { sample(); tick = 0; }
 
     init_colors();
-    vgfx_clear(ctx, HBG);
-    draw_scanlines(ctx, w, h);
-    draw_frame(ctx, w, h);
+    float w = ctx->width, h = ctx->height;
+    float pad = 16.0f;
 
-    /* Create sphere once */
-    if (!sphere) sphere = vgfx_mesh_sphere(12, 24, 1.0f);
+    vgfx_clear(ctx, C_BG);
 
-    /* Top info */
+    /* ============================================================
+     * Top row: 4 bar gauges (CPU, MEM, GPU, SWP)
+     * ============================================================ */
+    float gauge_y = pad;
+    float gauge_h = h * 0.42f;
+    float gauge_w = (w - pad * 5) / 4.0f;
+
+    float gx = pad;
+    draw_bar_gauge(ctx, gx, gauge_y, gauge_w, gauge_h, "CPU", D.cpu_total);
+    gx += gauge_w + pad;
+    draw_bar_gauge(ctx, gx, gauge_y, gauge_w, gauge_h, "MEM", D.mem_pct);
+    gx += gauge_w + pad;
+    draw_bar_gauge(ctx, gx, gauge_y, gauge_w, gauge_h, "GPU", D.gpu_ok ? D.gpu_pct : 0);
+    gx += gauge_w + pad;
+    draw_bar_gauge(ctx, gx, gauge_y, gauge_w, gauge_h, "SWP", D.swap_pct);
+
+    /* ============================================================
+     * Divider
+     * ============================================================ */
+    float div1_y = gauge_y + gauge_h + pad;
+    vgfx_line(ctx, pad, div1_y, w - pad, div1_y, 1.0f, C_DIM);
+
+    /* ============================================================
+     * Middle: per-core bars
+     * ============================================================ */
+    float core_y = div1_y + pad;
+    float core_h = 90.0f;
+    draw_core_strip(ctx, pad, core_y, w - pad * 2, core_h);
+
+    /* ============================================================
+     * Divider
+     * ============================================================ */
+    float div2_y = core_y + core_h + pad * 0.5f;
+    vgfx_line(ctx, pad, div2_y, w - pad, div2_y, 1.0f, C_DIM);
+
+    /* ============================================================
+     * Bottom: data fields
+     * ============================================================ */
+    float field_y = div2_y + pad;
+    float row_h = 20.0f;
+    float col_w = (w - pad * 3) / 2.0f;
+
+    /* Left column: system identification */
     {
-        int uh = (int)(D.uptime/3600), um = (int)(D.uptime/60)%60;
-        char info[128];
-        snprintf(info, sizeof(info), "%s  UP %02d:%02d  PRC %d  LOAD %.1f %.1f %.1f",
-                 D.hostname, uh, um, D.procs, D.load[0], D.load[1], D.load[2]);
-        float tw = vgfx_text_width(ctx, info, -1, 10);
-        vgfx_text(ctx, info, w*0.5f - tw*0.5f, 16, 10, HG);
+        char buf[64];
+        float fy = field_y;
+        draw_field(ctx, pad, fy, 90, "HOST", D.hostname[0] ? D.hostname : "--", C_HI); fy += row_h;
+        draw_field(ctx, pad, fy, 90, "KERNEL", D.kernel[0] ? D.kernel : "--", C_FG); fy += row_h;
+
+        int uh = (int)(D.uptime / 3600);
+        int um = (int)(D.uptime / 60) % 60;
+        int ud = uh / 24;
+        uh = uh % 24;
+        snprintf(buf, sizeof(buf), "%dd %02dh %02dm", ud, uh, um);
+        draw_field(ctx, pad, fy, 90, "UPTIME", buf, C_FG); fy += row_h;
+
+        snprintf(buf, sizeof(buf), "%d", D.procs);
+        draw_field(ctx, pad, fy, 90, "PROCS", buf, C_FG); fy += row_h;
+
+        snprintf(buf, sizeof(buf), "%.2f  %.2f  %.2f", D.load[0], D.load[1], D.load[2]);
+        draw_field(ctx, pad, fy, 90, "LOAD", buf, C_FG); fy += row_h;
     }
 
-    /* Tapes */
-    float tape_h = h * 0.5f;
-    draw_tape(ctx, 8, 30, 28, tape_h, D.cpu_total*100, "CPU", false);
-    draw_tape(ctx, w-36, 30, 28, tape_h, D.mem_pct*100, "MEM", true);
-
-    /* 3D Wireframe Sphere -- center */
+    /* Right column: I/O */
     {
-        float cx = w * 0.5f, cy = h * 0.3f;
-        float r = fminf(w, h) * 0.15f;
+        char buf[64];
+        float rx = pad * 2 + col_w;
+        float fy = field_y;
 
-        vgfx_3d_ctx_t ctx3d;
-        vgfx_3d_init(&ctx3d, cx, cy, r, 45.0f);
-
-        /* Rotation speed proportional to CPU load */
-        sphere_angle += 0.005f + D.cpu_total * 0.03f;
-        float wobble = sinf(D.t * 0.4f) * 0.15f;
-
-        vgfx_mat4_t model = vgfx_mat4_multiply(
-            vgfx_mat4_rotate_y(sphere_angle),
-            vgfx_mat4_rotate_x(wobble));
-        vgfx_3d_set_model(&ctx3d, model);
-
-        /* Color edges by latitude band -> per-core CPU */
-        if (sphere) {
-            vgfx_color_t *colors = malloc(sizeof(vgfx_color_t) * (size_t)sphere->edge_count);
-            if (colors) {
-                for (int i = 0; i < sphere->edge_count; i++) {
-                    /* Determine which latitude band this edge belongs to */
-                    vgfx_vec3_t va = sphere->verts[sphere->edges[i].a];
-                    vgfx_vec3_t vb = sphere->verts[sphere->edges[i].b];
-                    float avg_y = (va.y + vb.y) * 0.5f;
-                    /* Map Y position (-1..1) to core index */
-                    int core_idx = (int)((avg_y + 1.0f) * 0.5f * (float)D.num_cores);
-                    if (core_idx < 0) core_idx = 0;
-                    if (core_idx >= D.num_cores) core_idx = D.num_cores - 1;
-                    float usage = (D.num_cores > 0) ? D.core[core_idx] : D.cpu_total;
-                    colors[i] = usage_color(usage);
-                    colors[i].a *= (0.5f + usage * 0.5f); /* brighter with load */
-                }
-                vgfx_draw_mesh_colored(ctx, &ctx3d, sphere, 1.0f, colors);
-                free(colors);
-            }
+        /* Memory detail */
+        if (D.mem_total_kb > 0) {
+            float used_gb = (float)(D.mem_total_kb - D.mem_avail_kb) / 1048576.0f;
+            float total_gb = (float)D.mem_total_kb / 1048576.0f;
+            snprintf(buf, sizeof(buf), "%.1f / %.1f GB", used_gb, total_gb);
+            draw_field(ctx, rx, fy, 90, "RAM", buf, C_FG); fy += row_h;
         }
-    }
-
-    /* Horizon indicator */
-    {
-        float cx = w * 0.5f, cy = h * 0.55f;
-        float r = fminf(w, h) * 0.1f;
-        float pitch = (D.cpu_total - 0.5f) * 30.0f * M_PI / 180.0f;
-        float roll = (D.load[0] - D.load[2]) * 5.0f * M_PI / 180.0f;
-
-        /* Circle border */
-        int seg = 36;
-        for (int i = 0; i < seg; i++) {
-            float a0 = (float)i/(float)seg * 2*M_PI;
-            float a1 = (float)(i+1)/(float)seg * 2*M_PI;
-            vgfx_line(ctx, cx+r*cosf(a0), cy+r*sinf(a0),
-                        cx+r*cosf(a1), cy+r*sinf(a1), 1.0f, HG);
+        if (D.swap_total_kb > 0) {
+            float used_gb = (float)(D.swap_total_kb - D.swap_free_kb) / 1048576.0f;
+            float total_gb = (float)D.swap_total_kb / 1048576.0f;
+            snprintf(buf, sizeof(buf), "%.1f / %.1f GB", used_gb, total_gb);
+            draw_field(ctx, rx, fy, 90, "SWAP", buf, C_FG); fy += row_h;
         }
 
-        /* Horizon line (rotated) */
-        float cos_r = cosf(roll), sin_r = sinf(roll);
-        float offset = pitch * r * 2;
-        float hx1 = -r * 1.2f, hx2 = r * 1.2f;
-        float hy = offset;
-        /* Rotate */
-        float rx1 = hx1*cos_r - hy*sin_r, ry1 = hx1*sin_r + hy*cos_r;
-        float rx2 = hx2*cos_r - hy*sin_r, ry2 = hx2*sin_r + hy*cos_r;
-        vgfx_push_clip(ctx, cx-r, cy-r, r*2, r*2);
-        vgfx_line(ctx, cx+rx1, cy+ry1, cx+rx2, cy+ry2, 1.5f, HB);
+        /* Network rate */
+        double rx_kb = (double)D.rx_bytes_per_sec / 1024.0;
+        double tx_kb = (double)D.tx_bytes_per_sec / 1024.0;
+        snprintf(buf, sizeof(buf), "%.1f KB/s", rx_kb);
+        draw_field(ctx, rx, fy, 90, "NET RX", buf, C_FG); fy += row_h;
+        snprintf(buf, sizeof(buf), "%.1f KB/s", tx_kb);
+        draw_field(ctx, rx, fy, 90, "NET TX", buf, C_FG); fy += row_h;
 
-        /* Pitch ladder */
-        for (int d = -15; d <= 15; d += 5) {
-            if (d == 0) continue;
-            float py = offset + (float)d / 15.0f * r;
-            float pw = r * 0.3f;
-            float lx1 = -pw, lx2 = pw, ly = py;
-            float rlx1 = lx1*cos_r - ly*sin_r, rly1 = lx1*sin_r + ly*cos_r;
-            float rlx2 = lx2*cos_r - ly*sin_r, rly2 = lx2*sin_r + ly*cos_r;
-            vgfx_line(ctx, cx+rlx1, cy+rly1, cx+rlx2, cy+rly2, 0.8f, HG);
-        }
-        vgfx_pop_clip(ctx);
-
-        /* Aircraft symbol */
-        vgfx_line(ctx, cx-15, cy, cx-5, cy, 1.5f, HB);
-        vgfx_line(ctx, cx+5, cy, cx+15, cy, 1.5f, HB);
-        vgfx_line(ctx, cx, cy-5, cx, cy+5, 1.5f, HB);
-
-        /* Label */
-        vgfx_text(ctx, "ATT", cx-10, cy+r+14, 8, HD);
+        /* Disk I/O */
+        snprintf(buf, sizeof(buf), "R %ld  W %ld",
+                 D.disk_reads_per_sec, D.disk_writes_per_sec);
+        draw_field(ctx, rx, fy, 90, "DISK", buf, C_FG); fy += row_h;
     }
 
-    /* Per-core bars */
-    {
-        float bar_y = h * 0.68f;
-        float bar_h = h * 0.06f;
-        float bar_x = 55, bar_w = w - 110;
-        vgfx_text(ctx, "CORES", bar_x, bar_y - 4, 8, HD);
-        draw_core_bars(ctx, bar_x, bar_y, bar_w, bar_h);
-    }
-
-    /* Traces */
-    {
-        float ty = h * 0.77f;
-        float th = h * 0.08f;
-        float tw = w * 0.42f;
-
-        draw_trace(ctx, 55, ty, tw, th, D.cpu_hist, D.head, HG, "CPU");
-        draw_trace(ctx, w-55-tw, ty, tw, th, D.mem_hist, D.head, HB, "MEM");
-
-        float ty2 = ty + th + 6;
-        float th2 = h * 0.06f;
-        draw_trace(ctx, 55, ty2, tw, th2, D.gpu_hist, D.head,
-                    vgfx_rgba(0.8f,0.4f,0.0f,0.8f), "GPU");
-        draw_trace(ctx, w-55-tw, ty2, tw, th2, D.net_rx_hist, D.head,
-                    vgfx_rgba(0.0f,0.6f,1.0f,0.8f), "NET");
-    }
-
-    /* Bottom detail */
-    {
-        float by = h - 30;
-        float fs = 9;
-        char buf[128];
-        snprintf(buf, sizeof(buf), "GPU: %s %.0f%%",
-                 D.gpu_ok ? "OK" : "--", D.gpu_pct*100);
-        vgfx_text(ctx, buf, 55, by, fs, D.gpu_ok ? HG : HD);
-
-        snprintf(buf, sizeof(buf), "RAM: %.1f/%.1f GB  SWAP: %.1f/%.1f GB",
-                 (float)(D.mem_total_kb - D.mem_avail_kb)/1048576.0f,
-                 (float)D.mem_total_kb/1048576.0f,
-                 (float)(D.swap_total_kb - D.swap_free_kb)/1048576.0f,
-                 (float)D.swap_total_kb/1048576.0f);
-        float tw = vgfx_text_width(ctx, buf, -1, fs);
-        vgfx_text(ctx, buf, w - 55 - tw, by, fs, HG);
-    }
-
-    /* Bottom status */
+    /* Bottom status line -- ETCHED */
     {
         time_t now = time(NULL);
         struct tm *t = localtime(&now);
-        char s[64];
-        snprintf(s, sizeof(s), "VGP HUD  %02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec);
-        vgfx_text(ctx, s, 55, h - 10, 8, HD);
-        /* Blink */
-        if ((int)(D.t * 2) % 2 == 0)
-            vgfx_circle(ctx, w - 20, h - 10, 3, HG);
+        char s[32];
+        snprintf(s, sizeof(s), "%02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec);
+        vgfx_text(ctx, "VGP SYS", pad, h - 6, 10, C_DIM);
+        float tw = vgfx_text_width(ctx, s, -1, 10);
+        vgfx_text(ctx, s, w - pad - tw, h - 6, 10, C_DIM);
     }
 }
 
 int main(int argc, char *argv[])
 {
     (void)argc; (void)argv;
+    sample();
 
     vgfx_ctx_t ctx;
-    if (vgfx_init(&ctx, "VGP Tactical Monitor", 850, 650, 0) < 0) return 1;
+    if (vgfx_init(&ctx, "VGP System Monitor", 900, 600, 0) < 0) return 1;
     vgfx_run_animated(&ctx, render, sample, 1000);
-    if (sphere) vgfx_mesh_destroy(sphere);
     vgfx_destroy(&ctx);
     return 0;
 }
