@@ -20,43 +20,95 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm git base-devel meson ninja \
             libdrm libinput libxkbcommon seatd dbus libvterm \
-            mesa mesa-utils
+            mesa pam
 
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Build
+      - name: Build and test
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          meson setup build -Dprefix=/usr
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          meson setup build -Dprefix=/usr -Dbuildtype=release
           meson compile -C build
+          echo "Build successful"
+          ls -la build/vgp build/vgp-term build/vgp-launcher \
+                 build/vgp-settings build/vgp-files build/vgp-monitor build/vgp-view
           DESTDIR=pkg meson install -C build
           tar czf "vgp-${TAG_NAME}-x86_64.tar.gz" -C pkg .
 
-      - name: Create Release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vgp-release
+          path: vgp-*.tar.gz
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: vgp-*.tar.gz
           generate_release_notes: true
+          body: |
+            ## VGP ${{ github.ref_name }}
+
+            GPU-accelerated vector display server for Linux.
+
+            ### Install (Arch/CachyOS)
+            ```
+            yay -S vgp-git
+            ```
+
+            ### Install from tarball
+            ```
+            tar xzf vgp-*.tar.gz -C /
+            ```
 
   aur:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Update PKGBUILD version
+      - name: Generate .SRCINFO and update version
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           VERSION="${TAG_NAME#v}"
           sed -i "s/pkgver=.*/pkgver=$VERSION/" PKGBUILD
+
+          # Generate .SRCINFO manually (no makepkg available on ubuntu)
+          cat > .SRCINFO << SRCEOF
+          pkgbase = vgp-git
+          	pkgdesc = GPU-accelerated vector display server and desktop environment
+          	pkgver = ${VERSION}
+          	pkgrel = 1
+          	url = https://github.com/theesfeld/VGP
+          	arch = x86_64
+          	license = MIT
+          	makedepends = meson
+          	makedepends = ninja
+          	makedepends = git
+          	depends = libdrm
+          	depends = libinput
+          	depends = libxkbcommon
+          	depends = seatd
+          	depends = dbus
+          	depends = libvterm
+          	depends = mesa
+          	depends = pam
+          	provides = vgp
+          	conflicts = vgp
+          	source = git+https://github.com/theesfeld/VGP.git
+
+          pkgname = vgp-git
+          SRCEOF
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' .SRCINFO
 
       - name: Publish to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
@@ -66,4 +118,5 @@ jobs:
           commit_username: github-actions
           commit_email: github-actions@github.com
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "Update to version"
+          commit_message: "Update to ${{ github.ref_name }}"
+          force_push: true

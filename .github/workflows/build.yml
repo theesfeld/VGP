@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git base-devel meson ninja \
+            libdrm libinput libxkbcommon seatd dbus libvterm \
+            mesa pam
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          meson setup build -Dprefix=/usr
+          meson compile -C build
+
+      - name: Verify binaries
+        run: |
+          for bin in vgp vgp-term vgp-launcher vgp-settings vgp-files vgp-monitor vgp-view; do
+            test -f "build/$bin" && echo "OK: $bin" || exit 1
+          done
+          test -f build/libvgp.so || exit 1
+          echo "All binaries built successfully"
