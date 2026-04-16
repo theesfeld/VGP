@@ -47,8 +47,12 @@ int main(int argc, char *argv[])
         }
     }
 
-    /* Redirect all logs to /tmp/vgp.log */
-    FILE *logfile = fopen("/tmp/vgp.log", "w");
+    /* Redirect logs to user-writable location */
+    const char *home_dir = getenv("HOME");
+    char log_path[256];
+    if (home_dir) snprintf(log_path, sizeof(log_path), "%s/.config/vgp/vgp.log", home_dir);
+    else snprintf(log_path, sizeof(log_path), "/tmp/vgp-%d.log", getuid());
+    FILE *logfile = fopen(log_path, "w");
     if (logfile) {
         setvbuf(logfile, NULL, _IOLBF, 0);
         dup2(fileno(logfile), STDERR_FILENO);

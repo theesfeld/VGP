@@ -99,14 +99,15 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
     float th = theme->titlebar_height;
     float cr = theme->corner_radius > 0 ? theme->corner_radius : 10.0f;
 
-    float glass_alpha = focused ? 0.12f : 0.08f;
     float edge_alpha = focused ? 0.25f : 0.12f;
 
     /* === Plexiglass pane ===
-     * Nearly invisible glass -- you see through it.
-     * Glass blur is drawn in a separate pass (see render_output).
-     * Here we just draw the very subtle glass surface indicators. */
-    (void)glass_alpha;
+     * Translucent glass -- the background shows through.
+     * Very subtle tint, barely visible surface.
+     * FBO blur drawn in separate pass provides the actual blur;
+     * this fill is the glass material on top. */
+    b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
+                               0.08f, 0.08f, 0.10f, focused ? 0.65f : 0.55f);
 
     /* Glass edge highlight (top-left light source) */
     b->ops->draw_rounded_rect(b, ctx, x, y, w, 1.5f, cr,
