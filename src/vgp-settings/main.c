@@ -1,6 +1,6 @@
-/* VGP Settings -- Full GUI configuration editor
- * Every setting is editable with proper widgets.
- * Changes write back to config.toml. */
+/* VGP Settings -- Complete configuration GUI
+ * Sidebar navigation, every config option present, proper widgets.
+ * All vector-rendered. */
 
 #include "vgp-ui.h"
 #include "config-writer.h"
@@ -12,55 +12,105 @@
 #include <unistd.h>
 
 /* ============================================================
+ * Layout constants
+ * ============================================================ */
+
+#define SIDEBAR_W 20
+#define SIDEBAR_ICON_W 3
+
+/* ============================================================
  * Application state
  * ============================================================ */
 
 typedef enum {
-    TAB_GENERAL,
-    TAB_PANEL,
-    TAB_THEME,
-    TAB_KEYBINDS,
-    TAB_BACKGROUND,
-    TAB_MONITORS,
-    TAB_LOCKSCREEN,
-    TAB_ACCESSIBILITY,
-    TAB_ABOUT,
-    TAB_COUNT,
-} settings_tab_t;
+    PAGE_GENERAL,
+    PAGE_INPUT,
+    PAGE_WINDOWS,
+    PAGE_PANEL,
+    PAGE_THEME,
+    PAGE_BACKGROUND,
+    PAGE_KEYBINDS,
+    PAGE_MONITORS,
+    PAGE_AUTOSTART,
+    PAGE_RULES,
+    PAGE_LOCKSCREEN,
+    PAGE_ACCESSIBILITY,
+    PAGE_ABOUT,
+    PAGE_COUNT,
+} settings_page_t;
 
-static const char *tab_names[] = {
-    "General", "Panel", "Theme", "Keybinds", "Background",
-    "Monitors", "Lock", "Access", "About"
+static const char *page_labels[] = {
+    "  General",
+    "  Input",
+    "  Windows",
+    "  Panel",
+    "  Theme",
+    "  Background",
+    "  Keybinds",
+    "  Monitors",
+    "  Autostart",
+    "  Rules",
+    "  Lock Screen",
+    "  Accessibility",
+    "  About",
+};
+
+/* Unicode icons for sidebar */
+static const uint32_t page_icons[] = {
+    0x2699, /* General:       gear */
+    0x2316, /* Input:         position indicator */
+    0x25A3, /* Windows:       square */
+    0x2261, /* Panel:         hamburger */
+    0x2726, /* Theme:         star */
+    0x25A8, /* Background:    shaded square */
+    0x2328, /* Keybinds:      keyboard */
+    0x25A1, /* Monitors:      square outline */
+    0x25B6, /* Autostart:     play */
+    0x2263, /* Rules:         triple bar */
+    0x26BF, /* Lock:          lock */
+    0x267F, /* Accessibility: wheelchair */
+    0x24D8, /* About:         circled i */
 };
 
 typedef struct {
-    settings_tab_t  current_tab;
+    settings_page_t current_page;
     int             edit_field;
+    int             scroll_y;  /* vertical scroll for content area */
 
     /* General */
     char            terminal[256];
     char            launcher[256];
     char            screenshot_dir[256];
+    char            url_handler[256];
+    char            font_path[256];
+    float           font_size;
     int             workspaces;
+    bool            focus_follows_mouse;
+
+    /* Input */
     float           pointer_speed;
+    bool            natural_scrolling;
+    bool            tap_to_click;
+    int             repeat_delay;
+    int             repeat_rate;
 
-    /* Panel */
-    int             panel_position;  /* 0=bottom, 1=top */
-    int             panel_height;
-    char            panel_left[256];
-    char            panel_center[256];
-    char            panel_right[256];
-
-    /* WM */
-    int             wm_mode;   /* 0=floating, 1=tiling, 2=hybrid */
-    int             tile_algo; /* 0=golden_ratio, 1=equal, 2=master_stack, 3=spiral */
+    /* Windows */
+    int             wm_mode;
+    int             tile_algo;
     float           tile_master_ratio;
     int             tile_gap_inner;
     int             tile_gap_outer;
     bool            tile_smart_gaps;
 
+    /* Panel */
+    int             panel_position;
+    int             panel_height;
+    char            panel_left[256];
+    char            panel_center[256];
+    char            panel_right[256];
+
     /* Background */
-    int             bg_mode;  /* 0=solid, 1=shader, 2=wallpaper, 3=none */
+    int             bg_mode;
     char            bg_shader[256];
     char            bg_wallpaper[256];
 
@@ -84,18 +134,31 @@ typedef struct {
     struct { char key[64]; char action[256]; bool capturing; } keybinds[128];
     int             keybind_count;
 
-    /* Dropdown open states */
-    bool            dd_panel_pos;
+    /* Autostart */
+    char            autostart[16][256];
+    int             autostart_count;
+
+    /* Window rules */
+    struct { char title[128]; bool floating; int workspace; } rules[32];
+    int             rule_count;
+
+    /* Monitors */
+    struct { bool configured; int x, y, workspace; } monitors[8];
+    int             monitor_count;
+
+    /* Dropdown states */
     bool            dd_wm_mode;
     bool            dd_tile_algo;
+    bool            dd_panel_pos;
     bool            dd_bg_mode;
 
+    bool            unsaved;
     char            status[128];
     int             status_timer;
     char            config_path[512];
 } settings_state_t;
 
-static settings_state_t state;
+static settings_state_t S;
 
 /* ============================================================
  * Config loading / saving
@@ -103,7 +166,7 @@ static settings_state_t state;
 
 static void scan_themes(void)
 {
-    state.theme_count = 0;
+    S.theme_count = 0;
     const char *home = getenv("HOME");
     if (!home) return;
     char path[512];
@@ -111,10 +174,10 @@ static void scan_themes(void)
     DIR *dir = opendir(path);
     if (!dir) return;
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL && state.theme_count < 32) {
+    while ((entry = readdir(dir)) != NULL && S.theme_count < 32) {
         if (entry->d_name[0] == '.') continue;
         if (entry->d_type != DT_DIR) continue;
-        snprintf(state.themes[state.theme_count++], 64, "%s", entry->d_name);
+        snprintf(S.themes[S.theme_count++], 64, "%s", entry->d_name);
     }
     closedir(dir);
 }
@@ -123,34 +186,33 @@ static void load_config(void)
 {
     const char *home = getenv("HOME");
     if (!home) return;
-    snprintf(state.config_path, sizeof(state.config_path),
-             "%s/.config/vgp/config.toml", home);
+    snprintf(S.config_path, sizeof(S.config_path), "%s/.config/vgp/config.toml", home);
 
     /* Defaults */
-    snprintf(state.terminal, sizeof(state.terminal), "vgp-term");
-    snprintf(state.launcher, sizeof(state.launcher), "vgp-launcher");
-    snprintf(state.theme_name, sizeof(state.theme_name), "dark");
-    snprintf(state.screenshot_dir, sizeof(state.screenshot_dir), "%s/Pictures", home);
-    state.workspaces = 9;
-    state.pointer_speed = 3.0f;
-    state.panel_position = 0;
-    state.panel_height = 32;
-    snprintf(state.panel_left, sizeof(state.panel_left), "workspaces");
-    snprintf(state.panel_center, sizeof(state.panel_center), "taskbar");
-    snprintf(state.panel_right, sizeof(state.panel_right), "clock, date");
-    state.wm_mode = 0;
-    state.tile_algo = 0;
-    state.tile_master_ratio = 0.55f;
-    state.tile_gap_inner = 6;
-    state.tile_gap_outer = 8;
-    state.tile_smart_gaps = true;
-    state.bg_mode = 1;
-    state.lock_enabled = true;
-    state.lock_timeout = 5;
-    state.a11y_text_size = 0;
-    state.edit_field = -1;
+    snprintf(S.terminal, sizeof(S.terminal), "vgp-term");
+    snprintf(S.launcher, sizeof(S.launcher), "vgp-launcher");
+    snprintf(S.theme_name, sizeof(S.theme_name), "dark");
+    snprintf(S.screenshot_dir, sizeof(S.screenshot_dir), "%s/Pictures", home);
+    snprintf(S.url_handler, sizeof(S.url_handler), "vgp-term -e w3m '%%s'");
+    S.font_size = 14.0f;
+    S.workspaces = 9;
+    S.pointer_speed = 3.0f;
+    S.repeat_delay = 300;
+    S.repeat_rate = 30;
+    S.panel_height = 32;
+    snprintf(S.panel_left, sizeof(S.panel_left), "workspaces");
+    snprintf(S.panel_center, sizeof(S.panel_center), "taskbar");
+    snprintf(S.panel_right, sizeof(S.panel_right), "clock, date");
+    S.tile_master_ratio = 0.55f;
+    S.tile_gap_inner = 6;
+    S.tile_gap_outer = 8;
+    S.tile_smart_gaps = true;
+    S.bg_mode = 1;
+    S.lock_enabled = true;
+    S.lock_timeout = 5;
+    S.edit_field = -1;
 
-    FILE *f = fopen(state.config_path, "r");
+    FILE *f = fopen(S.config_path, "r");
     if (!f) return;
 
     char line[512], section[64] = "";
@@ -158,516 +220,611 @@ static void load_config(void)
         size_t len = strlen(line);
         while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r' || line[len-1] == ' '))
             line[--len] = '\0';
-        char *s = line;
-        while (*s == ' ') s++;
+        char *s = line; while (*s == ' ') s++;
         if (s[0] == '#' || s[0] == '\0') continue;
-        if (s[0] == '[') {
-            char *end = strchr(s, ']');
-            if (end) { *end = '\0'; snprintf(section, sizeof(section), "%s", s + 1); }
-            continue;
-        }
-        char *eq = strchr(s, '=');
-        if (!eq) continue;
-        *eq = '\0';
-        char *key = s, *val = eq + 1;
-        while (*key == ' ') key++;
-        len = strlen(key); while (len > 0 && key[len-1] == ' ') key[--len] = '\0';
-        while (*val == ' ') val++;
-        len = strlen(val);
-        if (len >= 2 && val[0] == '"' && val[len-1] == '"') { val[len-1] = '\0'; val++; }
+        if (s[0] == '[') { char *e = strchr(s,']'); if (e) { *e='\0'; snprintf(section,64,"%s",s+1); } continue; }
+        char *eq = strchr(s, '='); if (!eq) continue;
+        *eq = '\0'; char *key = s, *val = eq+1;
+        while (*key == ' ') key++; len = strlen(key); while (len>0 && key[len-1]==' ') key[--len]='\0';
+        while (*val == ' ') val++; len = strlen(val);
+        if (len >= 2 && val[0]=='"' && val[len-1]=='"') { val[len-1]='\0'; val++; }
 
-        if (strcmp(section, "general") == 0) {
-            if (strcmp(key, "terminal") == 0) snprintf(state.terminal, sizeof(state.terminal), "%s", val);
-            else if (strcmp(key, "launcher") == 0) snprintf(state.launcher, sizeof(state.launcher), "%s", val);
-            else if (strcmp(key, "theme") == 0) snprintf(state.theme_name, sizeof(state.theme_name), "%s", val);
-            else if (strcmp(key, "workspaces") == 0) state.workspaces = atoi(val);
-            else if (strcmp(key, "screenshot_dir") == 0) snprintf(state.screenshot_dir, sizeof(state.screenshot_dir), "%s", val);
-            else if (strcmp(key, "wm_mode") == 0) {
-                if (strcmp(val, "tiling") == 0) state.wm_mode = 1;
-                else if (strcmp(val, "hybrid") == 0) state.wm_mode = 2;
-                else state.wm_mode = 0;
+        if (strcmp(section,"general")==0) {
+            if (strcmp(key,"terminal")==0) snprintf(S.terminal,256,"%s",val);
+            else if (strcmp(key,"launcher")==0) snprintf(S.launcher,256,"%s",val);
+            else if (strcmp(key,"theme")==0) snprintf(S.theme_name,64,"%s",val);
+            else if (strcmp(key,"workspaces")==0) S.workspaces = atoi(val);
+            else if (strcmp(key,"screenshot_dir")==0) snprintf(S.screenshot_dir,256,"%s",val);
+            else if (strcmp(key,"url_handler")==0) snprintf(S.url_handler,256,"%s",val);
+            else if (strcmp(key,"font_size")==0) S.font_size = (float)atof(val);
+            else if (strcmp(key,"font_path")==0) snprintf(S.font_path,256,"%s",val);
+            else if (strcmp(key,"focus_follows_mouse")==0) S.focus_follows_mouse = strcmp(val,"true")==0;
+            else if (strcmp(key,"wm_mode")==0) {
+                if (strcmp(val,"tiling")==0) S.wm_mode=1; else if (strcmp(val,"hybrid")==0) S.wm_mode=2; else S.wm_mode=0;
             }
-            else if (strcmp(key, "tile_algorithm") == 0) {
-                if (strcmp(val, "equal") == 0) state.tile_algo = 1;
-                else if (strcmp(val, "master_stack") == 0) state.tile_algo = 2;
-                else if (strcmp(val, "spiral") == 0) state.tile_algo = 3;
-                else state.tile_algo = 0;
+            else if (strcmp(key,"tile_algorithm")==0) {
+                if (strcmp(val,"equal")==0) S.tile_algo=1; else if (strcmp(val,"master_stack")==0) S.tile_algo=2;
+                else if (strcmp(val,"spiral")==0) S.tile_algo=3; else S.tile_algo=0;
             }
-            else if (strcmp(key, "tile_master_ratio") == 0) state.tile_master_ratio = (float)atof(val);
-            else if (strcmp(key, "tile_gap_inner") == 0) state.tile_gap_inner = atoi(val);
-            else if (strcmp(key, "tile_gap_outer") == 0) state.tile_gap_outer = atoi(val);
-            else if (strcmp(key, "tile_smart_gaps") == 0) state.tile_smart_gaps = strcmp(val, "true") == 0;
-        } else if (strcmp(section, "input") == 0) {
-            if (strcmp(key, "pointer_speed") == 0) state.pointer_speed = (float)atof(val);
-        } else if (strcmp(section, "panel") == 0) {
-            if (strcmp(key, "position") == 0) state.panel_position = strcmp(val, "top") == 0 ? 1 : 0;
-            else if (strcmp(key, "height") == 0) state.panel_height = atoi(val);
-        } else if (strcmp(section, "panel.widgets.left") == 0) {
-            if (strcmp(key, "items") == 0) snprintf(state.panel_left, sizeof(state.panel_left), "%s", val);
-        } else if (strcmp(section, "panel.widgets.center") == 0) {
-            if (strcmp(key, "items") == 0) snprintf(state.panel_center, sizeof(state.panel_center), "%s", val);
-        } else if (strcmp(section, "panel.widgets.right") == 0) {
-            if (strcmp(key, "items") == 0) snprintf(state.panel_right, sizeof(state.panel_right), "%s", val);
-        } else if (strcmp(section, "keybinds") == 0) {
-            if (state.keybind_count < 128) {
-                snprintf(state.keybinds[state.keybind_count].key, 64, "%s", key);
-                snprintf(state.keybinds[state.keybind_count].action, 256, "%s", val);
-                state.keybinds[state.keybind_count].capturing = false;
-                state.keybind_count++;
+            else if (strcmp(key,"tile_master_ratio")==0) S.tile_master_ratio=(float)atof(val);
+            else if (strcmp(key,"tile_gap_inner")==0) S.tile_gap_inner=atoi(val);
+            else if (strcmp(key,"tile_gap_outer")==0) S.tile_gap_outer=atoi(val);
+            else if (strcmp(key,"tile_smart_gaps")==0) S.tile_smart_gaps=strcmp(val,"true")==0;
+        } else if (strcmp(section,"input")==0) {
+            if (strcmp(key,"pointer_speed")==0) S.pointer_speed=(float)atof(val);
+            else if (strcmp(key,"natural_scrolling")==0) S.natural_scrolling=strcmp(val,"true")==0;
+            else if (strcmp(key,"tap_to_click")==0) S.tap_to_click=strcmp(val,"true")==0;
+            else if (strcmp(key,"repeat_delay")==0) S.repeat_delay=atoi(val);
+            else if (strcmp(key,"repeat_rate")==0) S.repeat_rate=atoi(val);
+        } else if (strcmp(section,"panel")==0) {
+            if (strcmp(key,"position")==0) S.panel_position=strcmp(val,"top")==0?1:0;
+            else if (strcmp(key,"height")==0) S.panel_height=atoi(val);
+        } else if (strcmp(section,"panel.widgets.left")==0) {
+            if (strcmp(key,"items")==0) snprintf(S.panel_left,256,"%s",val);
+        } else if (strcmp(section,"panel.widgets.center")==0) {
+            if (strcmp(key,"items")==0) snprintf(S.panel_center,256,"%s",val);
+        } else if (strcmp(section,"panel.widgets.right")==0) {
+            if (strcmp(key,"items")==0) snprintf(S.panel_right,256,"%s",val);
+        } else if (strcmp(section,"keybinds")==0) {
+            if (S.keybind_count<128) {
+                snprintf(S.keybinds[S.keybind_count].key,64,"%s",key);
+                snprintf(S.keybinds[S.keybind_count].action,256,"%s",val);
+                S.keybind_count++;
             }
-        } else if (strcmp(section, "lockscreen") == 0) {
-            if (strcmp(key, "enabled") == 0) state.lock_enabled = strcmp(val, "true") == 0;
-            else if (strcmp(key, "timeout") == 0) state.lock_timeout = atoi(val);
-        } else if (strcmp(section, "background") == 0) {
-            if (strcmp(key, "mode") == 0) {
-                if (strcmp(val, "shader") == 0) state.bg_mode = 1;
-                else if (strcmp(val, "wallpaper") == 0) state.bg_mode = 2;
-                else if (strcmp(val, "none") == 0) state.bg_mode = 3;
-                else state.bg_mode = 0;
+        } else if (strcmp(section,"lockscreen")==0) {
+            if (strcmp(key,"enabled")==0) S.lock_enabled=strcmp(val,"true")==0;
+            else if (strcmp(key,"timeout")==0) S.lock_timeout=atoi(val);
+        } else if (strcmp(section,"accessibility")==0) {
+            if (strcmp(key,"high_contrast")==0) S.a11y_high_contrast=strcmp(val,"true")==0;
+            else if (strcmp(key,"focus_indicator")==0) S.a11y_focus_indicator=strcmp(val,"true")==0;
+            else if (strcmp(key,"text_size")==0||strcmp(key,"font_scale")==0) S.a11y_text_size=(float)atof(val);
+            else if (strcmp(key,"reduce_animations")==0) S.a11y_reduce_anims=strcmp(val,"true")==0;
+            else if (strcmp(key,"large_cursor")==0) S.a11y_large_cursor=strcmp(val,"true")==0;
+        } else if (strcmp(section,"session")==0) {
+            if (strcmp(key,"autostart")==0 && S.autostart_count<16)
+                snprintf(S.autostart[S.autostart_count++],256,"%s",val);
+        } else if (strncmp(section,"rule.",5)==0) {
+            int idx=atoi(section+5);
+            if (idx>=0 && idx<32) {
+                if (strcmp(key,"title")==0) snprintf(S.rules[idx].title,128,"%s",val);
+                else if (strcmp(key,"floating")==0) S.rules[idx].floating=strcmp(val,"true")==0;
+                else if (strcmp(key,"workspace")==0) S.rules[idx].workspace=atoi(val);
+                if (idx>=S.rule_count) S.rule_count=idx+1;
             }
-            else if (strcmp(key, "shader") == 0) snprintf(state.bg_shader, sizeof(state.bg_shader), "%s", val);
-            else if (strcmp(key, "wallpaper") == 0) snprintf(state.bg_wallpaper, sizeof(state.bg_wallpaper), "%s", val);
-        } else if (strcmp(section, "accessibility") == 0) {
-            if (strcmp(key, "high_contrast") == 0) state.a11y_high_contrast = strcmp(val, "true") == 0;
-            else if (strcmp(key, "focus_indicator") == 0) state.a11y_focus_indicator = strcmp(val, "true") == 0;
-            else if (strcmp(key, "text_size") == 0 || strcmp(key, "font_scale") == 0)
-                state.a11y_text_size = (float)atof(val);
-            else if (strcmp(key, "reduce_animations") == 0) state.a11y_reduce_anims = strcmp(val, "true") == 0;
-            else if (strcmp(key, "large_cursor") == 0) state.a11y_large_cursor = strcmp(val, "true") == 0;
+        } else if (strncmp(section,"monitor.",8)==0) {
+            int idx=atoi(section+8);
+            if (idx>=0 && idx<8) {
+                S.monitors[idx].configured=true;
+                if (strcmp(key,"x")==0) S.monitors[idx].x=atoi(val);
+                else if (strcmp(key,"y")==0) S.monitors[idx].y=atoi(val);
+                else if (strcmp(key,"workspace")==0) S.monitors[idx].workspace=atoi(val);
+                if (idx>=S.monitor_count) S.monitor_count=idx+1;
+            }
         }
     }
     fclose(f);
 }
 
-static const char *wm_modes[] = {"floating", "tiling", "hybrid"};
-static const char *tile_algos[] = {"golden_ratio", "equal", "master_stack", "spiral"};
-static const char *panel_positions[] = {"bottom", "top"};
-static const char *bg_modes[] = {"solid", "shader", "wallpaper", "none"};
+static const char *wm_modes[]={"floating","tiling","hybrid"};
+static const char *tile_algos[]={"golden_ratio","equal","master_stack","spiral"};
+static const char *panel_positions[]={"bottom","top"};
+static const char *bg_modes[]={"solid","shader","wallpaper","none"};
 
 static void save_config(void)
 {
-    const char *p = state.config_path;
-    config_set_value(p, "general", "terminal", state.terminal);
-    config_set_value(p, "general", "launcher", state.launcher);
-    config_set_value(p, "general", "theme", state.theme_name);
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d", state.workspaces);
-    config_set_value(p, "general", "workspaces", buf);
-    config_set_value(p, "general", "screenshot_dir", state.screenshot_dir);
-    config_set_value(p, "general", "wm_mode", wm_modes[state.wm_mode]);
-    config_set_value(p, "general", "tile_algorithm", tile_algos[state.tile_algo]);
-    snprintf(buf, sizeof(buf), "%.2f", state.tile_master_ratio);
-    config_set_value(p, "general", "tile_master_ratio", buf);
-    snprintf(buf, sizeof(buf), "%d", state.tile_gap_inner);
-    config_set_value(p, "general", "tile_gap_inner", buf);
-    snprintf(buf, sizeof(buf), "%d", state.tile_gap_outer);
-    config_set_value(p, "general", "tile_gap_outer", buf);
-    config_set_value(p, "general", "tile_smart_gaps", state.tile_smart_gaps ? "true" : "false");
-    snprintf(buf, sizeof(buf), "%.1f", state.pointer_speed);
-    config_set_value(p, "input", "pointer_speed", buf);
-    config_set_value(p, "panel", "position", panel_positions[state.panel_position]);
-    snprintf(buf, sizeof(buf), "%d", state.panel_height);
-    config_set_value(p, "panel", "height", buf);
-    config_set_value(p, "panel.widgets.left", "items", state.panel_left);
-    config_set_value(p, "panel.widgets.center", "items", state.panel_center);
-    config_set_value(p, "panel.widgets.right", "items", state.panel_right);
-    config_set_value(p, "lockscreen", "enabled", state.lock_enabled ? "true" : "false");
-    snprintf(buf, sizeof(buf), "%d", state.lock_timeout);
-    config_set_value(p, "lockscreen", "timeout", buf);
-    config_set_value(p, "accessibility", "high_contrast", state.a11y_high_contrast ? "true" : "false");
-    config_set_value(p, "accessibility", "focus_indicator", state.a11y_focus_indicator ? "true" : "false");
-    snprintf(buf, sizeof(buf), "%.1f", state.a11y_text_size);
-    config_set_value(p, "accessibility", "text_size", buf);
-    config_set_value(p, "accessibility", "reduce_animations", state.a11y_reduce_anims ? "true" : "false");
-    config_set_value(p, "accessibility", "large_cursor", state.a11y_large_cursor ? "true" : "false");
+    const char *p=S.config_path; char b[32];
+    config_set_value(p,"general","terminal",S.terminal);
+    config_set_value(p,"general","launcher",S.launcher);
+    config_set_value(p,"general","theme",S.theme_name);
+    snprintf(b,32,"%d",S.workspaces); config_set_value(p,"general","workspaces",b);
+    config_set_value(p,"general","screenshot_dir",S.screenshot_dir);
+    config_set_value(p,"general","url_handler",S.url_handler);
+    config_set_value(p,"general","focus_follows_mouse",S.focus_follows_mouse?"true":"false");
+    snprintf(b,32,"%.1f",S.font_size); config_set_value(p,"general","font_size",b);
+    config_set_value(p,"general","wm_mode",wm_modes[S.wm_mode]);
+    config_set_value(p,"general","tile_algorithm",tile_algos[S.tile_algo]);
+    snprintf(b,32,"%.2f",S.tile_master_ratio); config_set_value(p,"general","tile_master_ratio",b);
+    snprintf(b,32,"%d",S.tile_gap_inner); config_set_value(p,"general","tile_gap_inner",b);
+    snprintf(b,32,"%d",S.tile_gap_outer); config_set_value(p,"general","tile_gap_outer",b);
+    config_set_value(p,"general","tile_smart_gaps",S.tile_smart_gaps?"true":"false");
+    snprintf(b,32,"%.1f",S.pointer_speed); config_set_value(p,"input","pointer_speed",b);
+    config_set_value(p,"input","natural_scrolling",S.natural_scrolling?"true":"false");
+    config_set_value(p,"input","tap_to_click",S.tap_to_click?"true":"false");
+    snprintf(b,32,"%d",S.repeat_delay); config_set_value(p,"input","repeat_delay",b);
+    snprintf(b,32,"%d",S.repeat_rate); config_set_value(p,"input","repeat_rate",b);
+    config_set_value(p,"panel","position",panel_positions[S.panel_position]);
+    snprintf(b,32,"%d",S.panel_height); config_set_value(p,"panel","height",b);
+    config_set_value(p,"panel.widgets.left","items",S.panel_left);
+    config_set_value(p,"panel.widgets.center","items",S.panel_center);
+    config_set_value(p,"panel.widgets.right","items",S.panel_right);
+    config_set_value(p,"lockscreen","enabled",S.lock_enabled?"true":"false");
+    snprintf(b,32,"%d",S.lock_timeout); config_set_value(p,"lockscreen","timeout",b);
+    config_set_value(p,"accessibility","high_contrast",S.a11y_high_contrast?"true":"false");
+    config_set_value(p,"accessibility","focus_indicator",S.a11y_focus_indicator?"true":"false");
+    snprintf(b,32,"%.0f",S.a11y_text_size); config_set_value(p,"accessibility","text_size",b);
+    config_set_value(p,"accessibility","reduce_animations",S.a11y_reduce_anims?"true":"false");
+    config_set_value(p,"accessibility","large_cursor",S.a11y_large_cursor?"true":"false");
 
-    snprintf(state.status, sizeof(state.status), "Settings saved! Reload with SIGHUP or restart.");
-    state.status_timer = 180;
+    /* Save monitor config */
+    for (int i=0; i<S.monitor_count; i++) {
+        char sec[32]; snprintf(sec,32,"monitor.%d",i);
+        snprintf(b,32,"%d",S.monitors[i].x); config_set_value(p,sec,"x",b);
+        snprintf(b,32,"%d",S.monitors[i].y); config_set_value(p,sec,"y",b);
+        snprintf(b,32,"%d",S.monitors[i].workspace); config_set_value(p,sec,"workspace",b);
+    }
+
+    S.unsaved=false;
+    snprintf(S.status,128,"Saved. Reload: SIGHUP or restart VGP.");
+    S.status_timer=180;
 }
 
-static void set_status(const char *msg)
+static void mark_changed(const char *msg)
 {
-    snprintf(state.status, sizeof(state.status), "%s", msg);
-    state.status_timer = 120;
+    S.unsaved=true;
+    snprintf(S.status,128,"%s",msg);
+    S.status_timer=90;
 }
 
 /* ============================================================
- * Editable field (for text inputs only)
+ * Editable text field
  * ============================================================ */
 
-static bool editable_field(vui_ctx_t *ctx, int row, int col, int label_w,
-                            const char *label, char *buffer, int buf_size,
-                            int field_id, int field_width)
+static bool text_field(vui_ctx_t *ctx, int row, int col, int w,
+                        char *buf, int buf_sz, int fid)
 {
-    vui_label(ctx, row, col, label, VUI_GRAY);
-    bool editing = (state.edit_field == field_id);
-    vui_color_t bg = editing ? VUI_SURFACE : VUI_BG;
-    vui_color_t fg = editing ? VUI_WHITE : VUI_ACCENT;
-
-    vui_fill(ctx, row, col + label_w, 1, field_width, bg);
-    vui_text(ctx, row, col + label_w + 1, buffer, fg, bg);
-
+    bool editing=(S.edit_field==fid);
+    vui_color_t bg=editing ? VUI_SURFACE : (vui_color_t){0x18,0x18,0x28};
+    vui_color_t fg=editing ? VUI_WHITE : VUI_ACCENT;
+    vui_fill(ctx,row,col,1,w,bg);
+    vui_text(ctx,row,col+1,buf,fg,bg);
     if (editing) {
-        int cpos = (int)strlen(buffer);
-        if (cpos < field_width - 2)
-            vui_set_cell(ctx, row, col + label_w + 1 + cpos, '_', VUI_ACCENT, bg, VGP_CELL_BLINK);
+        int c=(int)strlen(buf);
+        if (c<w-2) vui_set_cell(ctx,row,col+1+c,'_',VUI_ACCENT,bg,VGP_CELL_BLINK);
     }
-
-    bool hover = (ctx->mouse_row == row &&
-                   ctx->mouse_col >= col + label_w &&
-                   ctx->mouse_col < col + label_w + field_width);
-    if (hover && ctx->mouse_clicked) {
-        state.edit_field = field_id;
-        return false;
-    }
-
+    bool hover=(ctx->mouse_row==row && ctx->mouse_col>=col && ctx->mouse_col<col+w);
+    if (hover && ctx->mouse_clicked) { S.edit_field=fid; return false; }
     if (editing && ctx->key_pressed) {
-        int len = (int)strlen(buffer);
-        if (ctx->last_keysym == 0xFF08 && len > 0) buffer[len - 1] = '\0';
-        else if (ctx->last_keysym == 0xFF0D || ctx->last_keysym == 0xFF09) { state.edit_field = -1; return true; }
-        else if (ctx->last_keysym == 0xFF1B) state.edit_field = -1;
-        else if (ctx->last_utf8[0] >= 0x20 && len < buf_size - 1) { buffer[len] = ctx->last_utf8[0]; buffer[len + 1] = '\0'; }
+        int len=(int)strlen(buf);
+        if (ctx->last_keysym==0xFF08 && len>0) buf[len-1]='\0';
+        else if (ctx->last_keysym==0xFF0D||ctx->last_keysym==0xFF09) { S.edit_field=-1; return true; }
+        else if (ctx->last_keysym==0xFF1B) S.edit_field=-1;
+        else if (ctx->last_utf8[0]>=0x20 && len<buf_sz-1) { buf[len]=ctx->last_utf8[0]; buf[len+1]='\0'; }
     }
     return false;
 }
 
+/* Label + text field on one row */
+static bool labeled_text(vui_ctx_t *ctx, int row, int col, int label_w,
+                           const char *label, char *buf, int buf_sz, int fid, int w)
+{
+    vui_label(ctx,row,col,label,VUI_GRAY);
+    return text_field(ctx,row,col+label_w,w-label_w,buf,buf_sz,fid);
+}
+
+/* Description text below a field */
+static void desc(vui_ctx_t *ctx, int row, int col, const char *text)
+{
+    vui_label(ctx, row, col, text, (vui_color_t){0x50,0x50,0x60});
+}
+
 /* ============================================================
- * Tab renderers
+ * Page renderers
  * ============================================================ */
 
-static void render_general(vui_ctx_t *ctx, int y, int x, int w)
+static void page_general(vui_ctx_t *ctx, int y, int x, int w)
 {
-    int fw = w - 24;
-    vui_section(ctx, y++, x, w, "General", VUI_ACCENT); y++;
-    if (editable_field(ctx, y, x+2, 18, "Terminal:", state.terminal, 256, 1, fw)) set_status("Terminal changed");
-    vui_tooltip(ctx, y++, x+2, 18, "Default terminal emulator command");
-    y++;
-    if (editable_field(ctx, y, x+2, 18, "Launcher:", state.launcher, 256, 2, fw)) set_status("Launcher changed");
-    vui_tooltip(ctx, y++, x+2, 18, "Application launcher command");
-    y++;
-    if (editable_field(ctx, y, x+2, 18, "Screenshot dir:", state.screenshot_dir, 256, 4, fw)) set_status("Screenshot dir changed");
-    vui_tooltip(ctx, y++, x+2, 18, "Directory for screenshots (Print key)");
-    y++;
+    vui_section(ctx,y++,x,w,"Applications",VUI_ACCENT); y++;
+    if (labeled_text(ctx,y,x,16,"Terminal",S.terminal,256,1,w)) mark_changed("Terminal command changed");
+    desc(ctx,++y,x,"Command to run when Super+Return is pressed"); y+=2;
+    if (labeled_text(ctx,y,x,16,"Launcher",S.launcher,256,2,w)) mark_changed("Launcher command changed");
+    desc(ctx,++y,x,"Command to run when Super+D is pressed"); y+=2;
+    if (labeled_text(ctx,y,x,16,"URL handler",S.url_handler,256,3,w)) mark_changed("URL handler changed");
+    desc(ctx,++y,x,"Opens URLs from terminal. Use %s for the URL"); y+=2;
+    if (labeled_text(ctx,y,x,16,"Screenshots",S.screenshot_dir,256,4,w)) mark_changed("Screenshot directory changed");
+    desc(ctx,++y,x,"Directory for Print key screenshots"); y+=2;
 
-    vui_label(ctx, y, x+2, "Workspaces:", VUI_GRAY);
-    float ws_f = (float)state.workspaces;
-    if (vui_slider(ctx, y, x + 18, 30, &ws_f, 1, 9, "%.0f")) {
-        state.workspaces = (int)ws_f;
-        set_status("Workspaces changed");
-    }
-    y += 2;
-
-    vui_section(ctx, y++, x, w, "Window Management", VUI_ACCENT); y++;
-
-    vui_label(ctx, y, x+2, "WM Mode:", VUI_GRAY);
-    if (vui_dropdown(ctx, y, x + 18, 20, wm_modes, 3, &state.wm_mode, &state.dd_wm_mode))
-        set_status("WM mode changed");
-    vui_tooltip(ctx, y, x+2, 16, "floating=free, tiling=auto-tile, hybrid=both");
-    if (state.dd_wm_mode) { y += 5; } else { y += 2; }
-
-    if (state.wm_mode >= 1) {
-        vui_label(ctx, y, x+2, "Tile algorithm:", VUI_GRAY);
-        if (vui_dropdown(ctx, y, x + 18, 20, tile_algos, 4, &state.tile_algo, &state.dd_tile_algo))
-            set_status("Tile algorithm changed");
-        if (state.dd_tile_algo) { y += 6; } else { y += 2; }
-
-        vui_label(ctx, y, x+2, "Master ratio:", VUI_GRAY);
-        if (vui_slider(ctx, y, x + 18, 30, &state.tile_master_ratio, 0.2f, 0.8f, "%.2f"))
-            set_status("Master ratio changed");
-        y += 2;
-
-        float gap_i = (float)state.tile_gap_inner;
-        vui_label(ctx, y, x+2, "Gap inner:", VUI_GRAY);
-        if (vui_slider(ctx, y, x + 18, 30, &gap_i, 0, 20, "%.0f px")) {
-            state.tile_gap_inner = (int)gap_i;
-            set_status("Inner gap changed");
-        }
-        y += 1;
-        float gap_o = (float)state.tile_gap_outer;
-        vui_label(ctx, y, x+2, "Gap outer:", VUI_GRAY);
-        if (vui_slider(ctx, y, x + 18, 30, &gap_o, 0, 20, "%.0f px")) {
-            state.tile_gap_outer = (int)gap_o;
-            set_status("Outer gap changed");
-        }
-        y += 2;
-
-        if (vui_checkbox(ctx, y, x+2, "Smart gaps (hide when 1 window)", &state.tile_smart_gaps))
-            set_status("Smart gaps toggled");
-        y += 2;
-    }
-
-    vui_section(ctx, y++, x, w, "Input", VUI_ACCENT); y++;
-    vui_label(ctx, y, x+2, "Pointer speed:", VUI_GRAY);
-    if (vui_slider(ctx, y, x + 18, 30, &state.pointer_speed, 0.5f, 10.0f, "%.1f"))
-        set_status("Pointer speed changed");
-    y += 2;
-
-    if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();
+    vui_section(ctx,y++,x,w,"Desktop",VUI_ACCENT); y++;
+    vui_label(ctx,y,x,"Workspaces",VUI_GRAY);
+    float ws_f=(float)S.workspaces;
+    if (vui_slider(ctx,y,x+16,w-16,&ws_f,1,9,"%.0f")) { S.workspaces=(int)ws_f; mark_changed("Workspaces changed"); }
+    y+=2;
+    if (vui_checkbox(ctx,y,x,"Focus follows mouse (no click required)",&S.focus_follows_mouse))
+        mark_changed("Focus mode changed");
+    desc(ctx,++y,x,"Window under cursor gets keyboard focus automatically"); y+=2;
 }
 
-static void render_panel(vui_ctx_t *ctx, int y, int x, int w)
+static void page_input(vui_ctx_t *ctx, int y, int x, int w)
 {
-    int fw = w - 24;
-    vui_section(ctx, y++, x, w, "Panel", VUI_ACCENT); y++;
+    vui_section(ctx,y++,x,w,"Pointer",VUI_ACCENT); y++;
+    vui_label(ctx,y,x,"Speed",VUI_GRAY);
+    if (vui_slider(ctx,y,x+16,w-16,&S.pointer_speed,0.5f,10.0f,"%.1f"))
+        mark_changed("Pointer speed changed");
+    y+=2;
+    if (vui_checkbox(ctx,y,x,"Natural scrolling (reverse direction)",&S.natural_scrolling))
+        mark_changed("Natural scrolling toggled");
+    y+=2;
+    if (vui_checkbox(ctx,y,x,"Tap to click (touchpad)",&S.tap_to_click))
+        mark_changed("Tap to click toggled");
+    y+=3;
 
-    vui_label(ctx, y, x+2, "Position:", VUI_GRAY);
-    if (vui_dropdown(ctx, y, x + 18, 16, panel_positions, 2, &state.panel_position, &state.dd_panel_pos))
-        set_status("Panel position changed");
-    if (state.dd_panel_pos) { y += 4; } else { y += 2; }
+    vui_section(ctx,y++,x,w,"Keyboard",VUI_ACCENT); y++;
+    vui_label(ctx,y,x,"Repeat delay",VUI_GRAY);
+    float rd=(float)S.repeat_delay;
+    if (vui_slider(ctx,y,x+16,w-16,&rd,100,1000,"%.0f ms")) { S.repeat_delay=(int)rd; mark_changed("Repeat delay changed"); }
+    desc(ctx,++y,x,"Milliseconds before key starts repeating"); y+=2;
+    vui_label(ctx,y,x,"Repeat rate",VUI_GRAY);
+    float rr=(float)S.repeat_rate;
+    if (vui_slider(ctx,y,x+16,w-16,&rr,10,100,"%.0f ms")) { S.repeat_rate=(int)rr; mark_changed("Repeat rate changed"); }
+    desc(ctx,++y,x,"Milliseconds between repeated keystrokes"); y+=2;
+}
 
-    float h_f = (float)state.panel_height;
-    vui_label(ctx, y, x+2, "Height:", VUI_GRAY);
-    if (vui_slider(ctx, y, x + 18, 30, &h_f, 20, 48, "%.0f px")) {
-        state.panel_height = (int)h_f;
-        set_status("Panel height changed");
+static void page_windows(vui_ctx_t *ctx, int y, int x, int w)
+{
+    vui_section(ctx,y++,x,w,"Window Management Mode",VUI_ACCENT); y++;
+    vui_label(ctx,y,x,"Mode",VUI_GRAY);
+    if (vui_dropdown(ctx,y,x+16,24,wm_modes,3,&S.wm_mode,&S.dd_wm_mode)) mark_changed("WM mode changed");
+    if (S.dd_wm_mode) { y+=5; } else { y+=1; }
+    desc(ctx,y++,x,"floating = free movement, tiling = auto-arrange, hybrid = mix"); y++;
+
+    if (S.wm_mode >= 1) {
+        vui_section(ctx,y++,x,w,"Tiling",VUI_ACCENT); y++;
+        vui_label(ctx,y,x,"Algorithm",VUI_GRAY);
+        if (vui_dropdown(ctx,y,x+16,24,tile_algos,4,&S.tile_algo,&S.dd_tile_algo)) mark_changed("Tile algorithm changed");
+        if (S.dd_tile_algo) { y+=6; } else { y+=2; }
+
+        vui_label(ctx,y,x,"Master ratio",VUI_GRAY);
+        if (vui_slider(ctx,y,x+16,w-16,&S.tile_master_ratio,0.2f,0.8f,"%.2f")) mark_changed("Master ratio changed");
+        desc(ctx,++y,x,"Proportion of screen for the master window"); y+=2;
+
+        float gi=(float)S.tile_gap_inner;
+        vui_label(ctx,y,x,"Inner gap",VUI_GRAY);
+        if (vui_slider(ctx,y,x+16,w-16,&gi,0,24,"%.0f px")) { S.tile_gap_inner=(int)gi; mark_changed("Inner gap changed"); }
+        y+=1;
+        float go=(float)S.tile_gap_outer;
+        vui_label(ctx,y,x,"Outer gap",VUI_GRAY);
+        if (vui_slider(ctx,y,x+16,w-16,&go,0,24,"%.0f px")) { S.tile_gap_outer=(int)go; mark_changed("Outer gap changed"); }
+        y+=2;
+
+        if (vui_checkbox(ctx,y,x,"Smart gaps (remove gaps with single window)",&S.tile_smart_gaps))
+            mark_changed("Smart gaps toggled");
+        y+=2;
     }
-    y += 3;
+}
 
-    vui_section(ctx, y++, x, w, "Widget Placement (comma-separated)", VUI_ACCENT); y++;
-    if (editable_field(ctx, y, x+2, 12, "Left:", state.panel_left, 256, 12, fw)) set_status("Left widgets changed");
-    vui_tooltip(ctx, y++, x+2, 12, "Widgets anchored to the left side");
-    y++;
-    if (editable_field(ctx, y, x+2, 12, "Center:", state.panel_center, 256, 13, fw)) set_status("Center widgets changed");
-    vui_tooltip(ctx, y++, x+2, 12, "Widgets in the center (taskbar fills available space)");
-    y++;
-    if (editable_field(ctx, y, x+2, 12, "Right:", state.panel_right, 256, 14, fw)) set_status("Right widgets changed");
-    vui_tooltip(ctx, y++, x+2, 12, "Widgets anchored to the right side");
-    y += 2;
+static void page_panel(vui_ctx_t *ctx, int y, int x, int w)
+{
+    vui_section(ctx,y++,x,w,"Panel Layout",VUI_ACCENT); y++;
+    vui_label(ctx,y,x,"Position",VUI_GRAY);
+    if (vui_dropdown(ctx,y,x+16,20,panel_positions,2,&S.panel_position,&S.dd_panel_pos))
+        mark_changed("Panel position changed");
+    if (S.dd_panel_pos) { y+=4; } else { y+=2; }
 
-    vui_section(ctx, y++, x, w, "Available Widgets", VUI_GRAY); y++;
-    const char *widgets[][2] = {
-        {"workspaces", "Numbered workspace indicators"},
-        {"taskbar",    "Window list for current workspace"},
-        {"clock",      "Current time (HH:MM)"},
-        {"date",       "Current date (MM/DD)"},
-        {"cpu",        "CPU usage percentage"},
-        {"memory",     "Memory usage percentage"},
-        {"battery",    "Battery level + charging state"},
+    float ph=(float)S.panel_height;
+    vui_label(ctx,y,x,"Height",VUI_GRAY);
+    if (vui_slider(ctx,y,x+16,w-16,&ph,20,48,"%.0f px")) { S.panel_height=(int)ph; mark_changed("Panel height changed"); }
+    y+=3;
+
+    vui_section(ctx,y++,x,w,"Widgets",VUI_ACCENT); y++;
+    desc(ctx,y++,x,"Comma-separated list of widget names for each section"); y++;
+    if (labeled_text(ctx,y,x,10,"Left",S.panel_left,256,10,w)) mark_changed("Left widgets changed");
+    y+=2;
+    if (labeled_text(ctx,y,x,10,"Center",S.panel_center,256,11,w)) mark_changed("Center widgets changed");
+    y+=2;
+    if (labeled_text(ctx,y,x,10,"Right",S.panel_right,256,12,w)) mark_changed("Right widgets changed");
+    y+=3;
+
+    vui_section(ctx,y++,x,w,"Available Widgets",VUI_ACCENT); y++;
+    const char *wl[][2]={
+        {"workspaces","Workspace indicators (click to switch)"},
+        {"taskbar","Window list for current workspace"},
+        {"clock","Current time HH:MM"},
+        {"date","Current date MM/DD"},
+        {"cpu","CPU usage percentage from /proc/stat"},
+        {"memory","Memory usage from /proc/meminfo"},
+        {"battery","Battery level from /sys/class/power_supply"},
+        {"volume","PipeWire volume via wpctl"},
+        {"network","Active network interface status"},
     };
-    for (int i = 0; i < 7; i++) {
-        vui_text_bold(ctx, y, x + 4, widgets[i][0], VUI_ACCENT, VUI_BG);
-        vui_label(ctx, y, x + 18, widgets[i][1], VUI_GRAY);
+    for (int i=0; i<9; i++) {
+        vui_text_bold(ctx,y,x+2,wl[i][0],VUI_ACCENT,VUI_BG);
+        vui_label(ctx,y,x+16,wl[i][1],VUI_GRAY);
         y++;
     }
-    y += 2;
-    if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();
 }
 
-static void render_themes(vui_ctx_t *ctx, int y, int x, int w)
+static void page_theme(vui_ctx_t *ctx, int y, int x, int w)
 {
-    vui_section(ctx, y++, x, w, "Theme", VUI_ACCENT); y++;
-    vui_label(ctx, y, x+2, "Active:", VUI_GRAY);
-    vui_text_bold(ctx, y++, x + 14, state.theme_name, VUI_ACCENT, VUI_BG); y++;
-    vui_label(ctx, y++, x+2, "Click a theme to switch:", VUI_GRAY); y++;
-    for (int i = 0; i < state.theme_count; i++) {
-        bool sel = (strcmp(state.themes[i], state.theme_name) == 0);
-        if (vui_list_item(ctx, y + i, x + 2, w - 4, state.themes[i], sel, false)) {
-            snprintf(state.theme_name, sizeof(state.theme_name), "%s", state.themes[i]);
-            config_set_value(state.config_path, "general", "theme", state.theme_name);
-            set_status("Theme changed (hot-reloaded)");
+    vui_section(ctx,y++,x,w,"Theme",VUI_ACCENT); y++;
+    vui_label(ctx,y,x,"Active theme:",VUI_GRAY);
+    vui_text_bold(ctx,y,x+16,S.theme_name,VUI_ACCENT,VUI_BG); y+=2;
+    desc(ctx,y++,x,"Click a theme to switch. Changes apply via hot-reload."); y++;
+
+    for (int i=0; i<S.theme_count; i++) {
+        bool sel=(strcmp(S.themes[i],S.theme_name)==0);
+        if (vui_list_item(ctx,y+i,x,w,S.themes[i],sel,false)) {
+            snprintf(S.theme_name,64,"%s",S.themes[i]);
+            config_set_value(S.config_path,"general","theme",S.theme_name);
+            mark_changed("Theme applied via hot-reload");
         }
     }
 }
 
-static void render_keybinds(vui_ctx_t *ctx, int y, int x, int w)
+static void page_background(vui_ctx_t *ctx, int y, int x, int w)
 {
-    vui_section(ctx, y++, x, w, "Keybinds", VUI_ACCENT); y++;
-    vui_text_bold(ctx, y, x+2, "Key Combo", VUI_GRAY, VUI_BG);
-    vui_text_bold(ctx, y++, x+28, "Action", VUI_GRAY, VUI_BG);
-    vui_hline(ctx, y++, x+2, w-4, VUI_BORDER, VUI_BG);
+    vui_section(ctx,y++,x,w,"Background",VUI_ACCENT); y++;
+    vui_label(ctx,y,x,"Mode",VUI_GRAY);
+    if (vui_dropdown(ctx,y,x+16,24,bg_modes,4,&S.bg_mode,&S.dd_bg_mode))
+        mark_changed("Background mode changed");
+    if (S.dd_bg_mode) { y+=6; } else { y+=1; }
+    desc(ctx,y++,x,"solid = theme color, shader = GLSL animation, none = black"); y++;
 
-    int vis = ctx->rows - y - 3;
-    for (int i = ctx->scroll_offset; i < state.keybind_count && (i - ctx->scroll_offset) < vis; i++) {
-        int row = y + (i - ctx->scroll_offset);
-        /* Keybind capture field */
-        if (vui_keybind_input(ctx, row, x + 2, 24, state.keybinds[i].key, 64,
-                               &state.keybinds[i].capturing)) {
-            set_status("Keybind changed (save to apply)");
-        }
-        /* Action */
-        vui_text(ctx, row, x + 28, state.keybinds[i].action, VUI_ACCENT, VUI_BG);
-    }
-
-    /* Scrollbar */
-    if (state.keybind_count > vis) {
-        vui_scrollbar(ctx, y, x + w - 2, vis, vis, state.keybind_count, ctx->scroll_offset);
+    if (S.bg_mode==1) {
+        if (labeled_text(ctx,y,x,16,"Shader path",S.bg_shader,256,20,w)) mark_changed("Shader changed");
+        desc(ctx,++y,x,"Relative to theme dir or ~/.config/vgp/shaders/"); y+=2;
+    } else if (S.bg_mode==2) {
+        if (labeled_text(ctx,y,x,16,"Wallpaper",S.bg_wallpaper,256,21,w)) mark_changed("Wallpaper changed");
+        y+=2;
     }
 }
 
-static void render_background(vui_ctx_t *ctx, int y, int x, int w)
+static void page_keybinds(vui_ctx_t *ctx, int y, int x, int w)
 {
-    int fw = w - 24;
-    vui_section(ctx, y++, x, w, "Background", VUI_ACCENT); y++;
+    vui_section(ctx,y++,x,w,"Keybinds",VUI_ACCENT); y++;
+    desc(ctx,y++,x,"Click a key combo to re-bind it. Press Escape to cancel."); y++;
 
-    vui_label(ctx, y, x+2, "Mode:", VUI_GRAY);
-    if (vui_dropdown(ctx, y, x + 18, 20, bg_modes, 4, &state.bg_mode, &state.dd_bg_mode))
-        set_status("Background mode changed");
-    if (state.dd_bg_mode) { y += 6; } else { y += 2; }
+    vui_text_bold(ctx,y,x,"KEY COMBO",VUI_GRAY,VUI_BG);
+    vui_text_bold(ctx,y++,x+26,"ACTION",VUI_GRAY,VUI_BG);
+    vui_hline(ctx,y++,x,w,VUI_BORDER,VUI_BG);
 
-    if (state.bg_mode == 1) {
-        if (editable_field(ctx, y, x+2, 18, "Shader path:", state.bg_shader, 256, 21, fw))
-            set_status("Shader changed");
-        vui_tooltip(ctx, y, x+2, 18, "Path relative to theme dir or ~/.config/vgp/shaders/");
-        y += 2;
-    } else if (state.bg_mode == 2) {
-        if (editable_field(ctx, y, x+2, 18, "Wallpaper:", state.bg_wallpaper, 256, 22, fw))
-            set_status("Wallpaper changed");
-        y += 2;
+    int vis=ctx->rows-y-3;
+    for (int i=ctx->scroll_offset; i<S.keybind_count && (i-ctx->scroll_offset)<vis; i++) {
+        int row=y+(i-ctx->scroll_offset);
+        if (vui_keybind_input(ctx,row,x,24,S.keybinds[i].key,64,&S.keybinds[i].capturing))
+            mark_changed("Keybind changed");
+        vui_text(ctx,row,x+26,S.keybinds[i].action,VUI_ACCENT,VUI_BG);
+    }
+    if (S.keybind_count>vis)
+        vui_scrollbar(ctx,y,x+w-1,vis,vis,S.keybind_count,ctx->scroll_offset);
+}
+
+static void page_monitors(vui_ctx_t *ctx, int y, int x, int w)
+{
+    vui_section(ctx,y++,x,w,"Monitor Layout",VUI_ACCENT); y++;
+    desc(ctx,y++,x,"Configure position and workspace for each connected output."); y++;
+
+    if (S.monitor_count==0) {
+        vui_label(ctx,y,x,"No monitors configured. Add [monitor.0] to config.toml.",VUI_GRAY);
+        return;
     }
 
+    for (int i=0; i<S.monitor_count; i++) {
+        char hdr[32]; snprintf(hdr,32,"Monitor %d",i);
+        vui_section(ctx,y++,x,w,hdr,VUI_ACCENT); y++;
+
+        float mx=(float)S.monitors[i].x;
+        vui_label(ctx,y,x,"X position",VUI_GRAY);
+        if (vui_slider(ctx,y,x+16,w-16,&mx,0,10000,"%.0f")) { S.monitors[i].x=(int)mx; mark_changed("Monitor X changed"); }
+        y+=1;
+        float my=(float)S.monitors[i].y;
+        vui_label(ctx,y,x,"Y position",VUI_GRAY);
+        if (vui_slider(ctx,y,x+16,w-16,&my,0,5000,"%.0f")) { S.monitors[i].y=(int)my; mark_changed("Monitor Y changed"); }
+        y+=1;
+        float mw=(float)S.monitors[i].workspace;
+        vui_label(ctx,y,x,"Workspace",VUI_GRAY);
+        if (vui_slider(ctx,y,x+16,w-16,&mw,0,8,"%.0f")) { S.monitors[i].workspace=(int)mw; mark_changed("Monitor workspace changed"); }
+        y+=2;
+    }
+}
+
+static void page_autostart(vui_ctx_t *ctx, int y, int x, int w)
+{
+    vui_section(ctx,y++,x,w,"Autostart Programs",VUI_ACCENT); y++;
+    desc(ctx,y++,x,"Programs launched automatically when VGP starts."); y++;
+
+    for (int i=0; i<S.autostart_count; i++) {
+        char lbl[8]; snprintf(lbl,8,"%d.",i+1);
+        vui_label(ctx,y,x,lbl,VUI_GRAY);
+        if (text_field(ctx,y,x+4,w-4,S.autostart[i],256,40+i)) mark_changed("Autostart changed");
+        y+=2;
+    }
+    if (S.autostart_count==0) {
+        vui_label(ctx,y,x,"No autostart programs configured.",VUI_GRAY); y+=2;
+    }
+    desc(ctx,y++,x,"Add autostart entries in [session] section of config.toml");
+}
+
+static void page_rules(vui_ctx_t *ctx, int y, int x, int w)
+{
+    vui_section(ctx,y++,x,w,"Window Rules",VUI_ACCENT); y++;
+    desc(ctx,y++,x,"Match windows by title and apply settings."); y++;
+
+    if (S.rule_count==0) {
+        vui_label(ctx,y,x,"No window rules configured.",VUI_GRAY); y+=2;
+        desc(ctx,y++,x,"Add [rule.0] sections to config.toml with title, floating, workspace");
+        return;
+    }
+
+    vui_text_bold(ctx,y,x,"TITLE MATCH",VUI_GRAY,VUI_BG);
+    vui_text_bold(ctx,y,x+30,"FLOAT",VUI_GRAY,VUI_BG);
+    vui_text_bold(ctx,y++,x+38,"WS",VUI_GRAY,VUI_BG);
+    vui_hline(ctx,y++,x,w,VUI_BORDER,VUI_BG);
+
+    for (int i=0; i<S.rule_count; i++) {
+        vui_text(ctx,y,x,S.rules[i].title,VUI_WHITE,VUI_BG);
+        if (vui_checkbox(ctx,y,x+30,"",&S.rules[i].floating)) mark_changed("Rule floating toggled");
+        char ws[8]; snprintf(ws,8,"%d",S.rules[i].workspace);
+        vui_text(ctx,y,x+38,ws,VUI_ACCENT,VUI_BG);
+        y++;
+    }
+    (void)w;
+}
+
+static void page_lockscreen(vui_ctx_t *ctx, int y, int x, int w)
+{
+    vui_section(ctx,y++,x,w,"Lock Screen",VUI_ACCENT); y++;
+    if (vui_checkbox(ctx,y,x,"Enable lock screen",&S.lock_enabled)) mark_changed("Lock screen toggled");
+    desc(ctx,++y,x,"Activates after idle timeout. Authenticates via PAM."); y+=2;
+
+    if (S.lock_enabled) {
+        float t=(float)S.lock_timeout;
+        vui_label(ctx,y,x,"Idle timeout",VUI_GRAY);
+        if (vui_slider(ctx,y,x+16,w-16,&t,1,30,"%.0f min")) { S.lock_timeout=(int)t; mark_changed("Lock timeout changed"); }
+        desc(ctx,++y,x,"Minutes of inactivity before screen locks"); y+=2;
+    }
     y++;
-    if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();
+    desc(ctx,y++,x,"Lock screen uses your theme's shader background.");
+    desc(ctx,y++,x,"Keybind: Super+L to lock immediately.");
 }
 
-static void render_monitors(vui_ctx_t *ctx, int y, int x, int w)
+static void page_accessibility(vui_ctx_t *ctx, int y, int x, int w)
 {
-    vui_section(ctx, y++, x, w, "Monitors", VUI_ACCENT); y++;
-    vui_label(ctx, y++, x+2, "Per-monitor configuration via config.toml [monitor.N] sections.", VUI_GRAY); y++;
-    vui_label(ctx, y++, x+4, "x, y       = position in global layout", VUI_GRAY);
-    vui_label(ctx, y++, x+4, "workspace  = which workspace to display", VUI_GRAY);
-    y++;
-    vui_label(ctx, y++, x+2, "Example:", VUI_GRAY); y++;
-    vui_text(ctx, y++, x+4, "[monitor.0]", VUI_ACCENT, VUI_BG);
-    vui_text(ctx, y++, x+4, "x = 0", VUI_WHITE, VUI_BG);
-    vui_text(ctx, y++, x+4, "y = 0", VUI_WHITE, VUI_BG);
-    vui_text(ctx, y++, x+4, "workspace = 0", VUI_WHITE, VUI_BG);
+    vui_section(ctx,y++,x,w,"Visual",VUI_ACCENT); y++;
+    if (vui_checkbox(ctx,y,x,"High contrast mode",&S.a11y_high_contrast)) mark_changed("High contrast toggled");
+    desc(ctx,++y,x,"Override theme colors for maximum readability"); y+=2;
+    if (vui_checkbox(ctx,y,x,"Focus indicator ring",&S.a11y_focus_indicator)) mark_changed("Focus indicator toggled");
+    desc(ctx,++y,x,"Yellow outline around the currently focused window"); y+=2;
+    if (vui_checkbox(ctx,y,x,"Large cursor",&S.a11y_large_cursor)) mark_changed("Large cursor toggled");
+    desc(ctx,++y,x,"Double-size cursor for visibility"); y+=2;
+
+    vui_label(ctx,y,x,"Text size override",VUI_GRAY);
+    if (vui_slider(ctx,y,x+20,w-20,&S.a11y_text_size,0,32,"%.0f pt")) mark_changed("Text size changed");
+    desc(ctx,++y,x,"Override vector text render size. 0 = use theme default."); y+=3;
+
+    vui_section(ctx,y++,x,w,"Motion",VUI_ACCENT); y++;
+    if (vui_checkbox(ctx,y,x,"Reduce animations",&S.a11y_reduce_anims)) mark_changed("Animations toggled");
+    desc(ctx,++y,x,"Disable window open/close/slide transitions"); y+=2;
 }
 
-static void render_lockscreen(vui_ctx_t *ctx, int y, int x, int w)
-{
-    vui_section(ctx, y++, x, w, "Lock Screen", VUI_ACCENT); y++;
-    if (vui_checkbox(ctx, y, x+2, "Enable lock screen", &state.lock_enabled))
-        set_status("Lock screen toggled");
-    vui_tooltip(ctx, y, x+2, 30, "Lock screen activates after idle timeout");
-    y += 2;
-
-    if (state.lock_enabled) {
-        float timeout_f = (float)state.lock_timeout;
-        vui_label(ctx, y, x+2, "Idle timeout:", VUI_GRAY);
-        if (vui_slider(ctx, y, x + 18, 30, &timeout_f, 1, 30, "%.0f min")) {
-            state.lock_timeout = (int)timeout_f;
-            set_status("Lock timeout changed");
-        }
-        y += 2;
-    }
-
-    vui_label(ctx, y++, x+2, "Authentication via PAM. Uses theme shader background.", VUI_GRAY);
-    y += 2;
-    if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();
-}
-
-static void render_accessibility(vui_ctx_t *ctx, int y, int x, int w)
-{
-    vui_section(ctx, y++, x, w, "Accessibility", VUI_ACCENT); y++;
-
-    if (vui_checkbox(ctx, y, x+2, "High contrast mode", &state.a11y_high_contrast))
-        set_status("High contrast toggled");
-    vui_tooltip(ctx, y, x+2, 30, "Override theme with high-contrast colors");
-    y += 2;
-
-    if (vui_checkbox(ctx, y, x+2, "Focus indicator ring", &state.a11y_focus_indicator))
-        set_status("Focus indicator toggled");
-    vui_tooltip(ctx, y, x+2, 30, "Bright yellow ring around focused window");
-    y += 2;
-
-    if (vui_checkbox(ctx, y, x+2, "Reduce animations", &state.a11y_reduce_anims))
-        set_status("Reduce animations toggled");
-    vui_tooltip(ctx, y, x+2, 30, "Disable window open/close/slide animations");
-    y += 2;
-
-    if (vui_checkbox(ctx, y, x+2, "Large cursor", &state.a11y_large_cursor))
-        set_status("Large cursor toggled");
-    vui_tooltip(ctx, y, x+2, 30, "Double-size cursor for visibility");
-    y += 2;
-
-    vui_label(ctx, y, x+2, "Text size:", VUI_GRAY);
-    if (vui_slider(ctx, y, x + 18, 30, &state.a11y_text_size, 0, 32, "%.0f pt"))
-        set_status("Vector text size changed (0 = theme default)");
-    vui_tooltip(ctx, y, x+2, 16, "Override vector text render size. 0 = use theme default.");
-    y += 3;
-
-    if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();
-}
-
-static void render_about(vui_ctx_t *ctx, int y, int x, int w)
+static void page_about(vui_ctx_t *ctx, int y, int x, int w)
 {
     (void)w;
-    vui_text_bold(ctx, y++, x+2, "VGP - Vector Graphics Protocol", VUI_ACCENT, VUI_BG); y++;
-    vui_label(ctx, y++, x+2, "Version 0.1.0", VUI_WHITE);
-    vui_label(ctx, y++, x+2, "GPU-accelerated vector display server for Linux", VUI_GRAY); y++;
-    vui_label(ctx, y++, x+2, "All rendering is vector-based. No X11. No Wayland.", VUI_GRAY); y++;
-    vui_label(ctx, y++, x+2, "https://github.com/theesfeld/VGP", VUI_ACCENT);
-    y += 2;
-    vui_label(ctx, y++, x+2, "Keybinds:", VUI_WHITE);
-    vui_label(ctx, y++, x+4, "Super+Return     Open terminal", VUI_GRAY);
-    vui_label(ctx, y++, x+4, "Super+D          Open launcher", VUI_GRAY);
-    vui_label(ctx, y++, x+4, "Super+Q          Close window", VUI_GRAY);
-    vui_label(ctx, y++, x+4, "Super+Space      Toggle float", VUI_GRAY);
-    vui_label(ctx, y++, x+4, "Alt+Tab          Cycle focus", VUI_GRAY);
-    vui_label(ctx, y++, x+4, "Super+1-9        Switch workspace", VUI_GRAY);
-    vui_label(ctx, y++, x+4, "Ctrl+Alt+BkSp    Quit VGP", VUI_GRAY);
+    y++;
+    vui_text_bold(ctx,y++,x,"VGP",VUI_ACCENT,VUI_BG);
+    vui_label(ctx,y++,x,"Vector Graphics Protocol",VUI_WHITE); y++;
+    vui_label(ctx,y++,x,"Version 0.1.0",VUI_GRAY);
+    vui_label(ctx,y++,x,"GPU-accelerated vector display server for Linux",VUI_GRAY); y++;
+    vui_label(ctx,y++,x,"Everything is rendered as vectors. No bitmaps.",VUI_GRAY);
+    vui_label(ctx,y++,x,"No X11. No Wayland. Pure TUI desktop environment.",VUI_GRAY); y++;
+    vui_label(ctx,y++,x,"https://github.com/theesfeld/VGP",VUI_ACCENT); y++;
+
+    vui_section(ctx,y++,x,w,"Quick Reference",VUI_ACCENT); y++;
+    const char *keys[][2]={
+        {"Super+Return","Open terminal"},
+        {"Super+D","Open launcher"},
+        {"Super+Q","Close focused window"},
+        {"Super+Space","Toggle floating/tiling"},
+        {"Super+M","Maximize/restore"},
+        {"Super+L","Lock screen"},
+        {"Alt+Tab","Cycle window focus"},
+        {"Super+1-9","Switch workspace"},
+        {"Super+Shift+1-9","Move window to workspace"},
+        {"Ctrl+Alt+BackSpace","Quit VGP"},
+        {"Print","Screenshot"},
+    };
+    for (int i=0; i<11; i++) {
+        vui_text_bold(ctx,y,x,keys[i][0],VUI_WHITE,VUI_BG);
+        vui_label(ctx,y,x+24,keys[i][1],VUI_GRAY);
+        y++;
+    }
 }
 
 /* ============================================================
- * Main render
+ * Main render with sidebar
  * ============================================================ */
 
 static void render(vui_ctx_t *ctx)
 {
-    vui_clear(ctx, VUI_BG);
-    vui_fill(ctx, 0, 0, 1, ctx->cols, VUI_SURFACE);
-    vui_text_bold(ctx, 0, 2, " VGP Settings ", VUI_ACCENT, VUI_SURFACE);
+    vui_clear(ctx,VUI_BG);
 
-    int tc = 2;
-    for (int i = 0; i < TAB_COUNT; i++) {
-        bool a = ((int)state.current_tab == i);
-        bool h = (ctx->mouse_row == 2 && ctx->mouse_col >= tc && ctx->mouse_col < tc + (int)strlen(tab_names[i]) + 2);
-        char b[32]; snprintf(b, sizeof(b), " %s ", tab_names[i]);
-        vui_text(ctx, 2, tc, b, a ? VUI_ACCENT : (h ? VUI_WHITE : VUI_GRAY), a ? VUI_SURFACE : VUI_BG);
-        if (h && ctx->mouse_clicked) { state.current_tab = i; state.edit_field = -1; }
-        tc += (int)strlen(tab_names[i]) + 3;
+    /* ---- Title bar ---- */
+    vui_fill(ctx,0,0,1,ctx->cols,VUI_SURFACE);
+    vui_text_bold(ctx,0,2," VGP Settings ",VUI_ACCENT,VUI_SURFACE);
+    if (S.unsaved)
+        vui_text(ctx,0,ctx->cols-12,"[unsaved]",VUI_YELLOW,VUI_SURFACE);
+
+    /* ---- Sidebar ---- */
+    int sb_w=SIDEBAR_W;
+    vui_color_t sb_bg=(vui_color_t){0x14,0x14,0x22};
+    for (int r=1; r<ctx->rows-1; r++)
+        vui_fill(ctx,r,0,1,sb_w,sb_bg);
+
+    /* Sidebar border */
+    for (int r=1; r<ctx->rows-1; r++)
+        vui_set_cell(ctx,r,sb_w,0x2502,VUI_BORDER,VUI_BG,0);
+
+    int sy=2;
+    for (int i=0; i<PAGE_COUNT; i++) {
+        bool active=((int)S.current_page==i);
+        bool hover=(ctx->mouse_row==sy && ctx->mouse_col<sb_w);
+        vui_color_t item_bg=active ? VUI_SURFACE : (hover ? (vui_color_t){0x1C,0x1C,0x30} : sb_bg);
+        vui_color_t item_fg=active ? VUI_ACCENT : (hover ? VUI_WHITE : VUI_GRAY);
+
+        vui_fill(ctx,sy,0,1,sb_w,item_bg);
+
+        /* Active indicator bar */
+        if (active)
+            vui_set_cell(ctx,sy,0,0x2588,VUI_ACCENT,item_bg,0);
+
+        /* Icon */
+        vui_set_cell(ctx,sy,2,page_icons[i],item_fg,item_bg,0);
+
+        /* Label */
+        vui_text(ctx,sy,4,page_labels[i]+2,item_fg,item_bg);
+
+        if (hover && ctx->mouse_clicked) {
+            S.current_page=i;
+            S.edit_field=-1;
+            ctx->scroll_offset=0;
+        }
+        sy++;
     }
-    vui_hline(ctx, 3, 0, ctx->cols, VUI_BORDER, VUI_BG);
 
-    int cy = 5, cx = 2, cw = ctx->cols - 4;
-    switch (state.current_tab) {
-    case TAB_GENERAL:       render_general(ctx, cy, cx, cw); break;
-    case TAB_PANEL:         render_panel(ctx, cy, cx, cw); break;
-    case TAB_THEME:         render_themes(ctx, cy, cx, cw); break;
-    case TAB_KEYBINDS:      render_keybinds(ctx, cy, cx, cw); break;
-    case TAB_BACKGROUND:    render_background(ctx, cy, cx, cw); break;
-    case TAB_MONITORS:      render_monitors(ctx, cy, cx, cw); break;
-    case TAB_LOCKSCREEN:    render_lockscreen(ctx, cy, cx, cw); break;
-    case TAB_ACCESSIBILITY: render_accessibility(ctx, cy, cx, cw); break;
-    case TAB_ABOUT:         render_about(ctx, cy, cx, cw); break;
-    default: break;
-    }
+    /* ---- Content area ---- */
+    int cx=sb_w+2;
+    int cy=2;
+    int cw=ctx->cols-cx-1;
 
-    /* Status bar */
-    vui_fill(ctx, ctx->rows - 1, 0, 1, ctx->cols, VUI_SURFACE);
-    if (state.status_timer > 0) {
-        vui_text(ctx, ctx->rows - 1, 2, state.status, VUI_GREEN, VUI_SURFACE);
-        state.status_timer--;
+    typedef void (*page_fn)(vui_ctx_t*,int,int,int);
+    page_fn pages[]={
+        page_general, page_input, page_windows, page_panel,
+        page_theme, page_background, page_keybinds, page_monitors,
+        page_autostart, page_rules, page_lockscreen, page_accessibility,
+        page_about,
+    };
+    if (S.current_page<PAGE_COUNT)
+        pages[S.current_page](ctx,cy,cx,cw);
+
+    /* ---- Bottom bar ---- */
+    vui_fill(ctx,ctx->rows-1,0,1,ctx->cols,VUI_SURFACE);
+
+    /* Save button in bottom bar */
+    if (vui_button(ctx,ctx->rows-1,2,"Save",VUI_WHITE,S.unsaved?VUI_ACCENT:(vui_color_t){0x30,0x30,0x40}))
+        save_config();
+
+    if (S.status_timer>0) {
+        vui_text(ctx,ctx->rows-1,12,S.status,VUI_GREEN,VUI_SURFACE);
+        S.status_timer--;
     } else {
-        vui_text(ctx, ctx->rows - 1, 2, "Click to interact | Esc to close", VUI_GRAY, VUI_SURFACE);
+        vui_text(ctx,ctx->rows-1,12,"Esc = close",VUI_GRAY,VUI_SURFACE);
     }
 
-    if (ctx->key_pressed && ctx->last_keysym == 0xFF1B && state.edit_field < 0)
-        ctx->running = false;
+    /* Esc to close (only if not editing a field) */
+    if (ctx->key_pressed && ctx->last_keysym==0xFF1B && S.edit_field<0)
+        ctx->running=false;
 }
 
 int main(int argc, char *argv[])
 {
     (void)argc; (void)argv;
-    FILE *lf = fopen("/tmp/vgp-settings.log", "w");
-    if (lf) { setvbuf(lf, NULL, _IOLBF, 0); dup2(fileno(lf), STDERR_FILENO); fclose(lf); }
+    FILE *lf=fopen("/tmp/vgp-settings.log","w");
+    if (lf) { setvbuf(lf,NULL,_IOLBF,0); dup2(fileno(lf),STDERR_FILENO); fclose(lf); }
 
     load_config();
     scan_themes();
 
     vui_ctx_t ctx;
-    if (vui_init(&ctx, "VGP Settings", 800, 600) < 0) return 1;
-    vui_run(&ctx, render);
+    if (vui_init(&ctx,"VGP Settings",900,650)<0) return 1;
+    vui_run(&ctx,render);
     vui_destroy(&ctx);
     return 0;
 }
