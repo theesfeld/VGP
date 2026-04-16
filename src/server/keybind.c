@@ -227,9 +227,25 @@ void vgp_keybind_execute(struct vgp_server *server, const vgp_keybind_t *bind)
     case VGP_ACTION_MAXIMIZE_WINDOW: {
         vgp_window_t *focused = server->compositor.focused;
         if (focused && server->drm.output_count > 0) {
-            vgp_compositor_maximize_window(&server->compositor, focused,
-                server->drm.outputs[0].width, server->drm.outputs[0].height,
-                &server->config.theme);
+            vgp_rect_t old_rect = focused->frame_rect;
+            bool was_maximized = (focused->state == VGP_WIN_MAXIMIZED);
+            if (was_maximized) {
+                vgp_compositor_restore_window(&server->compositor, focused);
+                vgp_anim_window_restore(&server->animations, focused->id,
+                    (float)old_rect.x, (float)old_rect.y,
+                    (float)old_rect.w, (float)old_rect.h,
+                    (float)focused->frame_rect.x, (float)focused->frame_rect.y,
+                    (float)focused->frame_rect.w, (float)focused->frame_rect.h);
+            } else {
+                vgp_compositor_maximize_window(&server->compositor, focused,
+                    server->drm.outputs[0].width, server->drm.outputs[0].height,
+                    &server->config.theme);
+                vgp_anim_window_maximize(&server->animations, focused->id,
+                    (float)old_rect.x, (float)old_rect.y,
+                    (float)old_rect.w, (float)old_rect.h,
+                    (float)focused->frame_rect.x, (float)focused->frame_rect.y,
+                    (float)focused->frame_rect.w, (float)focused->frame_rect.h);
+            }
             vgp_renderer_schedule_frame(&server->renderer);
         }
         break;
@@ -483,9 +499,18 @@ void vgp_keybind_execute(struct vgp_server *server, const vgp_keybind_t *bind)
             int target_ws = bind->action - VGP_ACTION_WORKSPACE_1;
             int active_out = server->compositor.active_output;
             if (active_out >= 0 && active_out < server->compositor.output_count) {
-                server->compositor.outputs[active_out].workspace = target_ws;
-                VGP_LOG_INFO(TAG, "output %d -> workspace %d", active_out, target_ws);
-                vgp_renderer_schedule_frame(&server->renderer);
+                int old_ws = server->compositor.outputs[active_out].workspace;
+                if (old_ws != target_ws) {
+                    /* Trigger slide animation: direction based on workspace order */
+                    int direction = (target_ws > old_ws) ? -1 : 1;
+                    vgp_anim_workspace_slide(&server->animations,
+                                              (uint32_t)active_out, direction);
+                    server->compositor.outputs[active_out].workspace = target_ws;
+                    VGP_LOG_INFO(TAG, "output %d -> workspace %d (slide %s)",
+                                 active_out, target_ws,
+                                 direction < 0 ? "left" : "right");
+                    vgp_renderer_schedule_frame(&server->renderer);
+                }
             }
         }
         break;

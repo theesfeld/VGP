@@ -61,12 +61,20 @@ void vgp_config_load_defaults(vgp_config_t *config)
     snprintf(config->panel.left_widgets[0], 32, "workspaces");
     config->panel.center_count = 1;
     snprintf(config->panel.center_widgets[0], 32, "taskbar");
-    config->panel.right_count = 1;
+    config->panel.right_count = 2;
     snprintf(config->panel.right_widgets[0], 32, "clock");
+    snprintf(config->panel.right_widgets[1], 32, "date");
 
     /* Lock screen defaults */
     config->lockscreen.enabled = true;
     config->lockscreen.timeout_min = 5;
+
+    /* Accessibility defaults */
+    config->accessibility.high_contrast = false;
+    config->accessibility.focus_indicator = false;
+    config->accessibility.font_scale = 1.0f;
+    config->accessibility.reduce_animations = false;
+    config->accessibility.large_cursor = false;
 
     /* Session defaults */
     config->session.autostart_count = 0;
@@ -340,6 +348,17 @@ int vgp_config_load(vgp_config_t *config, const char *path)
                 config->lockscreen.enabled = strcmp(val, "true") == 0;
             else if (strcmp(key, "timeout") == 0)
                 config->lockscreen.timeout_min = atoi(val);
+        } else if (strcmp(section, "accessibility") == 0) {
+            if (strcmp(key, "high_contrast") == 0)
+                config->accessibility.high_contrast = strcmp(val, "true") == 0;
+            else if (strcmp(key, "focus_indicator") == 0)
+                config->accessibility.focus_indicator = strcmp(val, "true") == 0;
+            else if (strcmp(key, "font_scale") == 0)
+                config->accessibility.font_scale = (float)atof(val);
+            else if (strcmp(key, "reduce_animations") == 0)
+                config->accessibility.reduce_animations = strcmp(val, "true") == 0;
+            else if (strcmp(key, "large_cursor") == 0)
+                config->accessibility.large_cursor = strcmp(val, "true") == 0;
         } else if (strcmp(section, "session") == 0) {
             if (strcmp(key, "autostart") == 0 &&
                 config->session.autostart_count < VGP_CONFIG_MAX_AUTOSTART) {

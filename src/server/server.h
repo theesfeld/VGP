@@ -53,6 +53,7 @@ typedef struct vgp_server {
     vgp_power_t           power;
     vgp_hotreload_t       hotreload;
     vgp_calendar_t        calendar;
+    vgp_session_t         session;
 
     /* Clipboard */
     char                  *clipboard_data;

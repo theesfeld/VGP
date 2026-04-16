@@ -256,6 +256,17 @@ executable('vgp-view',
 )
 
 # ============================================================
+# VGP Bar (standalone scriptable status bar)
+# ============================================================
+
+executable('vgp-bar',
+  files('src/vgp-bar/main.c'),
+  include_directories : [vgp_inc, vgp_ui_inc],
+  dependencies : [dep_vgp_ui],
+  install : true,
+)
+
+# ============================================================
 # Desktop files (for greeters and launchers)
 # ============================================================
 
@@ -270,5 +281,6 @@ install_data(
   'data/vgp-monitor.desktop',
   'data/vgp-launcher.desktop',
   'data/vgp-edit.desktop',
+  'data/vgp-bar.desktop',
   install_dir : get_option('datadir') / 'applications',
 )

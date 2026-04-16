@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VGP Bar
+Comment=Standalone scriptable status bar
+Exec=vgp-bar
+Terminal=false
+Categories=System;VGP;

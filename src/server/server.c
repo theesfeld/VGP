@@ -220,6 +220,10 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
     if (vgp_renderer_init(&server->renderer, &server->drm,
                            &server->loop, server) < 0)
         goto err_compositor;
+    /* Apply accessibility settings to renderer */
+    server->renderer.focus_indicator = server->config.accessibility.focus_indicator;
+    server->renderer.font_scale = server->config.accessibility.font_scale;
+    server->renderer.large_cursor = server->config.accessibility.large_cursor;
 
     /* 9. IPC */
     if (vgp_ipc_init(&server->ipc, &server->loop) < 0)
@@ -236,7 +240,8 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
     vgp_timer_arm_repeating(&server->statusbar_timer, VGP_MS_TO_NS(1000));
 
     /* 12. Animation, lock screen, desktop menu, IPC control, power */
-    vgp_anim_init(&server->animations, 0.2f, true);
+    vgp_anim_init(&server->animations, 0.2f,
+                    !server->config.accessibility.reduce_animations);
     vgp_lockscreen_init(&server->lockscreen,
                           server->config.lockscreen.enabled,
                           server->config.lockscreen.timeout_min);
@@ -259,6 +264,9 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
     vgp_ipc_control_init(&server->ctl, &server->loop);
     vgp_power_init(&server->power, 15);
     vgp_calendar_init(&server->calendar);
+
+    /* Session layout restore (load saved window positions) */
+    vgp_session_load(&server->session);
 
     /* Theme hot-reload */
     vgp_hotreload_init(&server->hotreload, &server->loop,
@@ -865,6 +873,23 @@ void vgp_server_handle_message(vgp_server_t *server,
                 }
             }
 
+            /* Session restore: match window to saved position */
+            if (server->session.restoring && win->decorated) {
+                vgp_rect_t sess_rect;
+                int sess_ws;
+                bool sess_float;
+                if (vgp_session_match_window(&server->session, title,
+                                              &sess_rect, &sess_ws, &sess_float)) {
+                    win->frame_rect = sess_rect;
+                    win->content_rect = vgp_window_content_rect(&sess_rect,
+                                                                 &server->config.theme);
+                    win->workspace = sess_ws;
+                    if (sess_float) win->floating_override = true;
+                    /* Send updated configure to client */
+                    vgp_server_send_configure(server, win);
+                }
+            }
+
             /* Re-tile if in tiling mode */
             server_retile(server, win->workspace);
 
@@ -1147,6 +1172,7 @@ void vgp_server_render_frame(vgp_server_t *server)
                                     &server->lockscreen,
                                     server->desktop_menu.visible ?
                                         &server->desktop_menu : &server->window_menu,
-                                    &server->calendar);
+                                    &server->calendar,
+                                    &server->config.panel);
     }
 }

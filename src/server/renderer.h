@@ -18,6 +18,11 @@ typedef struct vgp_renderer {
     int                   shader_background;
     int                   shader_titlebar;
     int                   shader_panel;
+
+    /* Accessibility */
+    bool                  focus_indicator;  /* draw bright ring around focused window */
+    float                 font_scale;       /* global text scale multiplier */
+    bool                  large_cursor;     /* 2x cursor size */
 } vgp_renderer_t;
 
 /* Forward declaration */
@@ -33,11 +38,10 @@ void vgp_renderer_schedule_frame(vgp_renderer_t *renderer);
 /* Render one output (full repaint) */
 struct vgp_notify;
 struct vgp_animation_mgr;
-struct vgp_notify;
-struct vgp_animation_mgr;
 struct vgp_lockscreen;
 struct vgp_menu;
 struct vgp_calendar;
+struct vgp_config_panel;
 
 void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  vgp_drm_backend_t *drm,
@@ -49,6 +53,7 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  struct vgp_animation_mgr *anims,
                                  struct vgp_lockscreen *lock,
                                  struct vgp_menu *menu,
-                                 struct vgp_calendar *cal);
+                                 struct vgp_calendar *cal,
+                                 const struct vgp_config_panel *panel_cfg);
 
 #endif /* VGP_RENDERER_H */

@@ -62,12 +62,36 @@ vgp_animation_t *vgp_anim_window_minimize(vgp_animation_mgr_t *mgr, uint32_t win
                                             float from_w, float from_h,
                                             float to_x, float to_y);
 
+/* Workspace slide animation */
+vgp_animation_t *vgp_anim_workspace_slide(vgp_animation_mgr_t *mgr,
+                                            uint32_t output_idx,
+                                            int direction); /* -1 = left, +1 = right */
+
+/* Window maximize/restore animations */
+vgp_animation_t *vgp_anim_window_maximize(vgp_animation_mgr_t *mgr, uint32_t win_id,
+                                            float from_x, float from_y,
+                                            float from_w, float from_h,
+                                            float to_x, float to_y,
+                                            float to_w, float to_h);
+vgp_animation_t *vgp_anim_window_restore(vgp_animation_mgr_t *mgr, uint32_t win_id,
+                                           float from_x, float from_y,
+                                           float from_w, float from_h,
+                                           float to_x, float to_y,
+                                           float to_w, float to_h);
+
 /* Query active animation for a window */
 vgp_animation_t *vgp_anim_find(vgp_animation_mgr_t *mgr, uint32_t win_id);
+
+/* Find workspace slide animation for an output */
+vgp_animation_t *vgp_anim_find_ws_slide(vgp_animation_mgr_t *mgr, uint32_t output_idx);
 
 /* Get interpolated values */
 float vgp_anim_opacity(vgp_animation_t *a);
 float vgp_anim_scale(vgp_animation_t *a);
 void  vgp_anim_rect(vgp_animation_t *a, float *x, float *y, float *w, float *h);
+
+/* Get workspace slide x offset (pixels) for the current transition.
+ * Returns 0 if no slide active. */
+float vgp_anim_ws_slide_offset(vgp_animation_t *a, float output_width);
 
 #endif /* VGP_ANIMATION_H */

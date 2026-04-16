@@ -23,13 +23,14 @@ typedef enum {
     TAB_BACKGROUND,
     TAB_MONITORS,
     TAB_LOCKSCREEN,
+    TAB_ACCESSIBILITY,
     TAB_ABOUT,
     TAB_COUNT,
 } settings_tab_t;
 
 static const char *tab_names[] = {
     "General", "Panel", "Theme", "Keybinds", "Background",
-    "Monitors", "Lock", "About"
+    "Monitors", "Lock", "Access", "About"
 };
 
 typedef struct {
@@ -55,6 +56,12 @@ typedef struct {
 
     char            lock_timeout_str[8];
     char            lock_enabled[8];
+
+    char            a11y_high_contrast[8];
+    char            a11y_focus_indicator[8];
+    char            a11y_font_scale[16];
+    char            a11y_reduce_anims[8];
+    char            a11y_large_cursor[8];
 
     char            themes[32][64];
     int             theme_count;
@@ -114,6 +121,11 @@ static void load_config(void)
     state.bg_wallpaper[0] = '\0';
     snprintf(state.lock_timeout_str, sizeof(state.lock_timeout_str), "5");
     snprintf(state.lock_enabled, sizeof(state.lock_enabled), "true");
+    snprintf(state.a11y_high_contrast, sizeof(state.a11y_high_contrast), "false");
+    snprintf(state.a11y_focus_indicator, sizeof(state.a11y_focus_indicator), "false");
+    snprintf(state.a11y_font_scale, sizeof(state.a11y_font_scale), "1.0");
+    snprintf(state.a11y_reduce_anims, sizeof(state.a11y_reduce_anims), "false");
+    snprintf(state.a11y_large_cursor, sizeof(state.a11y_large_cursor), "false");
     state.keybind_count = 0;
     state.edit_field = -1;
 
@@ -169,6 +181,12 @@ static void load_config(void)
         } else if (strcmp(section, "lockscreen") == 0) {
             if (strcmp(key, "enabled") == 0) snprintf(state.lock_enabled, sizeof(state.lock_enabled), "%s", val);
             else if (strcmp(key, "timeout") == 0) snprintf(state.lock_timeout_str, sizeof(state.lock_timeout_str), "%s", val);
+        } else if (strcmp(section, "accessibility") == 0) {
+            if (strcmp(key, "high_contrast") == 0) snprintf(state.a11y_high_contrast, sizeof(state.a11y_high_contrast), "%s", val);
+            else if (strcmp(key, "focus_indicator") == 0) snprintf(state.a11y_focus_indicator, sizeof(state.a11y_focus_indicator), "%s", val);
+            else if (strcmp(key, "font_scale") == 0) snprintf(state.a11y_font_scale, sizeof(state.a11y_font_scale), "%s", val);
+            else if (strcmp(key, "reduce_animations") == 0) snprintf(state.a11y_reduce_anims, sizeof(state.a11y_reduce_anims), "%s", val);
+            else if (strcmp(key, "large_cursor") == 0) snprintf(state.a11y_large_cursor, sizeof(state.a11y_large_cursor), "%s", val);
         }
     }
     fclose(f);
@@ -190,6 +208,11 @@ static void save_config(void)
     config_set_value(p, "panel.widgets.right", "items", state.panel_right);
     config_set_value(p, "lockscreen", "enabled", state.lock_enabled);
     config_set_value(p, "lockscreen", "timeout", state.lock_timeout_str);
+    config_set_value(p, "accessibility", "high_contrast", state.a11y_high_contrast);
+    config_set_value(p, "accessibility", "focus_indicator", state.a11y_focus_indicator);
+    config_set_value(p, "accessibility", "font_scale", state.a11y_font_scale);
+    config_set_value(p, "accessibility", "reduce_animations", state.a11y_reduce_anims);
+    config_set_value(p, "accessibility", "large_cursor", state.a11y_large_cursor);
 
     snprintf(state.status, sizeof(state.status), "Settings saved!");
     state.status_timer = 180;
@@ -279,7 +302,7 @@ static void render_panel(vui_ctx_t *ctx, int y, int x, int w)
     if (editable_field(ctx, y++, x+2, 20, "Right:", state.panel_right, 256, 14, fw)) set_status("Right widgets changed");
     y += 2;
     vui_section(ctx, y++, x, w, "Available Widgets", VUI_GRAY); y++;
-    const char *wlist[] = {"workspaces","taskbar","clock","date","settings","monitor","files","launcher","battery","volume",NULL};
+    const char *wlist[] = {"workspaces","taskbar","clock","date","cpu","memory","battery",NULL};
     for (int i = 0; wlist[i]; i++) vui_label(ctx, y++, x + 4, wlist[i], VUI_GRAY);
     y += 2;
     if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();
@@ -348,6 +371,23 @@ static void render_lockscreen(vui_ctx_t *ctx, int y, int x, int w)
     if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();
 }
 
+static void render_accessibility(vui_ctx_t *ctx, int y, int x, int w)
+{
+    (void)w;
+    vui_section(ctx, y++, x, w, "Accessibility", VUI_ACCENT); y++;
+    if (editable_field(ctx, y++, x+2, 24, "High contrast:", state.a11y_high_contrast, 8, 30, 10)) set_status("High contrast changed (true/false)");
+    y++;
+    if (editable_field(ctx, y++, x+2, 24, "Focus indicator:", state.a11y_focus_indicator, 8, 31, 10)) set_status("Focus indicator changed (true/false)");
+    y++;
+    if (editable_field(ctx, y++, x+2, 24, "Font scale:", state.a11y_font_scale, 16, 32, 10)) set_status("Font scale changed (0.5-3.0)");
+    y++;
+    if (editable_field(ctx, y++, x+2, 24, "Reduce animations:", state.a11y_reduce_anims, 8, 33, 10)) set_status("Reduce animations changed (true/false)");
+    y++;
+    if (editable_field(ctx, y++, x+2, 24, "Large cursor:", state.a11y_large_cursor, 8, 34, 10)) set_status("Large cursor changed (true/false)");
+    y += 2;
+    if (vui_button(ctx, y, x + 2, "Save All Settings", VUI_WHITE, VUI_ACCENT)) save_config();
+}
+
 static void render_about(vui_ctx_t *ctx, int y, int x, int w)
 {
     (void)w;
@@ -386,8 +426,9 @@ static void render(vui_ctx_t *ctx)
     case TAB_KEYBINDS:   render_keybinds(ctx, cy, cx, cw); break;
     case TAB_BACKGROUND: render_background(ctx, cy, cx, cw); break;
     case TAB_MONITORS:   render_monitors(ctx, cy, cx, cw); break;
-    case TAB_LOCKSCREEN: render_lockscreen(ctx, cy, cx, cw); break;
-    case TAB_ABOUT:      render_about(ctx, cy, cx, cw); break;
+    case TAB_LOCKSCREEN:    render_lockscreen(ctx, cy, cx, cw); break;
+    case TAB_ACCESSIBILITY: render_accessibility(ctx, cy, cx, cw); break;
+    case TAB_ABOUT:         render_about(ctx, cy, cx, cw); break;
     default: break;
     }
 

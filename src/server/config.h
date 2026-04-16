@@ -72,6 +72,14 @@ typedef struct vgp_config_lockscreen {
     int   timeout_min;
 } vgp_config_lockscreen_t;
 
+typedef struct vgp_config_accessibility {
+    bool  high_contrast;       /* force high-contrast colors */
+    bool  focus_indicator;     /* draw visible focus ring around focused window */
+    float font_scale;          /* global font scale multiplier (1.0 = normal) */
+    bool  reduce_animations;   /* disable/reduce window animations */
+    bool  large_cursor;        /* larger cursor size */
+} vgp_config_accessibility_t;
+
 typedef struct vgp_config_session {
     char  autostart[VGP_CONFIG_MAX_AUTOSTART][256];
     int   autostart_count;
@@ -91,6 +99,7 @@ typedef struct vgp_config {
     vgp_window_rule_t     window_rules[VGP_CONFIG_MAX_WINDOW_RULES];
     int                   window_rule_count;
     vgp_config_lockscreen_t lockscreen;
+    vgp_config_accessibility_t accessibility;
     vgp_config_session_t session;
     vgp_config_monitor_t  monitors[VGP_MAX_OUTPUTS];
     int                   monitor_count;

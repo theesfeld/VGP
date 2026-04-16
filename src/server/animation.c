@@ -165,6 +165,97 @@ vgp_animation_t *vgp_anim_window_minimize(vgp_animation_mgr_t *mgr, uint32_t win
     return a;
 }
 
+vgp_animation_t *vgp_anim_workspace_slide(vgp_animation_mgr_t *mgr,
+                                            uint32_t output_idx,
+                                            int direction)
+{
+    if (!mgr->enabled) return NULL;
+
+    /* Cancel any existing slide on this output */
+    vgp_animation_t *existing = vgp_anim_find_ws_slide(mgr, output_idx);
+    if (existing) { existing->active = false; mgr->count--; }
+
+    vgp_animation_t *a = alloc_anim(mgr);
+    memset(a, 0, sizeof(*a));
+    a->type = VGP_ANIM_WORKSPACE_SLIDE;
+    a->target_id = output_idx;
+    a->duration = mgr->default_duration * 1.2f;
+    a->easing = VGP_EASE_OUT_CUBIC;
+    a->active = true;
+    a->progress = 0.0f;
+
+    /* Use start_x to store direction: -1.0 = slide left, +1.0 = slide right */
+    a->start_x = (float)direction;
+    a->start_opacity = 1.0f;
+    a->end_opacity = 1.0f;
+
+    return a;
+}
+
+vgp_animation_t *vgp_anim_window_maximize(vgp_animation_mgr_t *mgr, uint32_t win_id,
+                                            float from_x, float from_y,
+                                            float from_w, float from_h,
+                                            float to_x, float to_y,
+                                            float to_w, float to_h)
+{
+    if (!mgr->enabled) return NULL;
+
+    vgp_animation_t *existing = vgp_anim_find(mgr, win_id);
+    if (existing) { existing->active = false; mgr->count--; }
+
+    vgp_animation_t *a = alloc_anim(mgr);
+    memset(a, 0, sizeof(*a));
+    a->type = VGP_ANIM_WINDOW_MAXIMIZE;
+    a->target_id = win_id;
+    a->duration = mgr->default_duration;
+    a->easing = VGP_EASE_OUT_CUBIC;
+    a->active = true;
+    a->progress = 0.0f;
+
+    a->start_x = from_x; a->start_y = from_y;
+    a->start_w = from_w; a->start_h = from_h;
+    a->end_x = to_x;     a->end_y = to_y;
+    a->end_w = to_w;     a->end_h = to_h;
+    a->start_opacity = 1.0f;
+    a->end_opacity = 1.0f;
+    a->start_scale = 1.0f;
+    a->end_scale = 1.0f;
+
+    return a;
+}
+
+vgp_animation_t *vgp_anim_window_restore(vgp_animation_mgr_t *mgr, uint32_t win_id,
+                                           float from_x, float from_y,
+                                           float from_w, float from_h,
+                                           float to_x, float to_y,
+                                           float to_w, float to_h)
+{
+    if (!mgr->enabled) return NULL;
+
+    vgp_animation_t *existing = vgp_anim_find(mgr, win_id);
+    if (existing) { existing->active = false; mgr->count--; }
+
+    vgp_animation_t *a = alloc_anim(mgr);
+    memset(a, 0, sizeof(*a));
+    a->type = VGP_ANIM_WINDOW_RESTORE;
+    a->target_id = win_id;
+    a->duration = mgr->default_duration;
+    a->easing = VGP_EASE_OUT_CUBIC;
+    a->active = true;
+    a->progress = 0.0f;
+
+    a->start_x = from_x; a->start_y = from_y;
+    a->start_w = from_w; a->start_h = from_h;
+    a->end_x = to_x;     a->end_y = to_y;
+    a->end_w = to_w;     a->end_h = to_h;
+    a->start_opacity = 1.0f;
+    a->end_opacity = 1.0f;
+    a->start_scale = 1.0f;
+    a->end_scale = 1.0f;
+
+    return a;
+}
+
 vgp_animation_t *vgp_anim_find(vgp_animation_mgr_t *mgr, uint32_t win_id)
 {
     for (int i = 0; i < VGP_MAX_ANIMATIONS; i++) {
@@ -196,4 +287,25 @@ void vgp_anim_rect(vgp_animation_t *a, float *x, float *y, float *w, float *h)
     *y = a->start_y + (a->end_y - a->start_y) * t;
     *w = a->start_w + (a->end_w - a->start_w) * t;
     *h = a->start_h + (a->end_h - a->start_h) * t;
+}
+
+vgp_animation_t *vgp_anim_find_ws_slide(vgp_animation_mgr_t *mgr, uint32_t output_idx)
+{
+    for (int i = 0; i < VGP_MAX_ANIMATIONS; i++) {
+        if (mgr->animations[i].active &&
+            mgr->animations[i].type == VGP_ANIM_WORKSPACE_SLIDE &&
+            mgr->animations[i].target_id == output_idx)
+            return &mgr->animations[i];
+    }
+    return NULL;
+}
+
+float vgp_anim_ws_slide_offset(vgp_animation_t *a, float output_width)
+{
+    if (!a) return 0.0f;
+    float t = vgp_ease(a->easing, a->progress);
+    /* direction stored in start_x: -1=left, +1=right
+     * At t=0, offset = direction * output_width (new ws slides in from edge)
+     * At t=1, offset = 0 (new ws is fully visible) */
+    return a->start_x * output_width * (1.0f - t);
 }
