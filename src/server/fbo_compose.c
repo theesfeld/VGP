@@ -33,6 +33,7 @@ static const char *blur_vert_src =
  * - Refraction distortion (UV offset based on normal)
  * - Frosted glass grain noise
  * - Tint overlay */
+/* Simplified glass blur shader -- fixed loop bounds for GLES3 compat */
 static const char *blur_frag_src =
     "#version 300 es\n"
     "precision mediump float;\n"
@@ -114,6 +115,38 @@ static const char *blur_frag_src =
     "    frag_color = vec4(glass, alpha * 0.92);\n"
     "}\n";
 
+/* Simplified glass shader for reliability */
+static const char *blur_frag_simple =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "uniform sampler2D u_scene;\n"
+    "uniform vec2 u_resolution;\n"
+    "uniform float u_blur_radius;\n"
+    "uniform vec4 u_tint;\n"
+    "in vec2 v_uv;\n"
+    "out vec4 frag_color;\n"
+    "void main() {\n"
+    "    vec2 uv = v_uv;\n"
+    "    vec2 ps = 1.0 / u_resolution;\n"
+    "    float r = u_blur_radius;\n"
+    "    vec3 c = vec3(0.0);\n"
+    "    float tw = 0.0;\n"
+    "    for (int ix = -4; ix <= 4; ix++) {\n"
+    "        for (int iy = -4; iy <= 4; iy++) {\n"
+    "            vec2 off = vec2(float(ix), float(iy)) * ps * r * 0.5;\n"
+    "            float w = 1.0 / (1.0 + float(ix*ix + iy*iy));\n"
+    "            c += texture(u_scene, uv + off).rgb * w;\n"
+    "            tw += w;\n"
+    "        }\n"
+    "    }\n"
+    "    c /= tw;\n"
+    "    float ca = r * 0.0005;\n"
+    "    c.r = mix(c.r, texture(u_scene, uv + vec2(ca, 0.0)).r, 0.15);\n"
+    "    c.b = mix(c.b, texture(u_scene, uv - vec2(ca, 0.0)).b, 0.15);\n"
+    "    vec3 glass = mix(c, u_tint.rgb, u_tint.a);\n"
+    "    frag_color = vec4(glass, 0.88);\n"
+    "}\n";
+
 /* ============================================================
  * Shader compilation
  * ============================================================ */
@@ -159,12 +192,17 @@ static GLuint link_program(GLuint vs, GLuint fs)
 int vgp_fbo_init(vgp_gpu_state_t *gs, uint32_t width, uint32_t height)
 {
     /* Compile blur shader */
+    /* Try simple shader first (most compatible), fall back to complex */
     VGP_LOG_INFO(TAG, "compiling glass blur shader...");
     GLuint vs = compile_shader(GL_VERTEX_SHADER, blur_vert_src);
-    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, blur_frag_src);
+    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, blur_frag_simple);
     if (!vs || !fs) {
-        VGP_LOG_ERROR(TAG, "glass shader compile failed (vs=%u fs=%u)", vs, fs);
-        /* FBO still works for capture, just no blur */
+        VGP_LOG_WARN(TAG, "simple glass shader failed, trying complex...");
+        if (fs) glDeleteShader(fs);
+        fs = compile_shader(GL_FRAGMENT_SHADER, blur_frag_src);
+    }
+    if (!vs || !fs) {
+        VGP_LOG_ERROR(TAG, "all glass shaders failed (vs=%u fs=%u)", vs, fs);
         gs->blur_program = 0;
     } else {
         gs->blur_program = link_program(vs, fs);
@@ -250,13 +288,19 @@ void vgp_fbo_capture(vgp_gpu_state_t *gs, uint32_t width, uint32_t height)
 {
     if (!gs->fbo_initialized) return;
 
-    /* Copy default framebuffer to our texture */
+    /* Copy default framebuffer content into our texture.
+     * Use glCopyTexSubImage2D instead of glBlitFramebuffer for
+     * maximum driver compatibility (GBM/EGL surfaces). */
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, gs->fbo);
-    glBlitFramebuffer(0, 0, (GLint)width, (GLint)height,
-                       0, 0, (GLint)width, (GLint)height,
-                       GL_COLOR_BUFFER_BIT, GL_LINEAR);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, gs->fbo_texture);
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0,
+                          (GLsizei)width, (GLsizei)height);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        VGP_LOG_WARN("fbo", "capture glCopyTexSubImage2D error: 0x%x", err);
+    }
 }
 
 void vgp_fbo_draw_blur_rect(vgp_gpu_state_t *gs,
@@ -275,33 +319,45 @@ void vgp_fbo_draw_blur_rect(vgp_gpu_state_t *gs,
     glBindTexture(GL_TEXTURE_2D, gs->fbo_texture);
     glUniform1i(glGetUniformLocation(gs->blur_program, "u_scene"), 0);
 
-    /* Uniforms */
-    glUniform4f(glGetUniformLocation(gs->blur_program, "u_rect"), x, y, w, h);
-    glUniform2f(glGetUniformLocation(gs->blur_program, "u_resolution"),
-                 (float)screen_w, (float)screen_h);
-    glUniform1f(glGetUniformLocation(gs->blur_program, "u_blur_radius"), blur_radius);
-    glUniform4f(glGetUniformLocation(gs->blur_program, "u_tint"), tint_r, tint_g, tint_b, tint_a);
-    glUniform1f(glGetUniformLocation(gs->blur_program, "u_corner_radius"), corner_radius);
+    /* Uniforms (only set ones that exist in the active shader variant) */
+    GLint loc;
+    loc = glGetUniformLocation(gs->blur_program, "u_resolution");
+    if (loc >= 0) glUniform2f(loc, (float)screen_w, (float)screen_h);
+    loc = glGetUniformLocation(gs->blur_program, "u_blur_radius");
+    if (loc >= 0) glUniform1f(loc, blur_radius);
+    loc = glGetUniformLocation(gs->blur_program, "u_tint");
+    if (loc >= 0) glUniform4f(loc, tint_r, tint_g, tint_b, tint_a);
+    loc = glGetUniformLocation(gs->blur_program, "u_rect");
+    if (loc >= 0) glUniform4f(loc, x, y, w, h);
+    loc = glGetUniformLocation(gs->blur_program, "u_corner_radius");
+    if (loc >= 0) glUniform1f(loc, corner_radius);
 
-    /* Set up viewport-mapped quad for the glass rectangle */
-    float ndc_x = x / (float)screen_w * 2.0f - 1.0f;
-    float ndc_y = 1.0f - (y + h) / (float)screen_h * 2.0f;
-    float ndc_w = w / (float)screen_w * 2.0f;
-    float ndc_h = h / (float)screen_h * 2.0f;
+    /* NDC position of the glass rectangle.
+     * OpenGL NDC: (-1,-1) = bottom-left, (1,1) = top-right.
+     * Screen coords: (0,0) = top-left, (w,h) = bottom-right.
+     * So screen Y must be flipped for NDC. */
+    float ndc_x0 = (x / (float)screen_w) * 2.0f - 1.0f;
+    float ndc_x1 = ((x + w) / (float)screen_w) * 2.0f - 1.0f;
+    float ndc_y0 = 1.0f - ((y + h) / (float)screen_h) * 2.0f; /* bottom of rect in NDC */
+    float ndc_y1 = 1.0f - (y / (float)screen_h) * 2.0f;       /* top of rect in NDC */
 
-    /* UV coordinates (sample from the captured scene at this position) */
-    float uv_x = x / (float)screen_w;
-    float uv_y = 1.0f - (y + h) / (float)screen_h; /* flip Y */
-    float uv_w = w / (float)screen_w;
-    float uv_h = h / (float)screen_h;
+    /* UV coordinates to sample the captured texture.
+     * The texture was captured with glCopyTexSubImage2D from the GL
+     * framebuffer, so texture V=0 = bottom of screen, V=1 = top.
+     * Screen y=0 (top) maps to texture v = 1 - 0 = 1.
+     * Screen y=h (bottom) maps to texture v = 1 - 1 = 0. */
+    float uv_x0 = x / (float)screen_w;
+    float uv_x1 = (x + w) / (float)screen_w;
+    float uv_y0 = 1.0f - (y + h) / (float)screen_h; /* bottom of rect in tex */
+    float uv_y1 = 1.0f - y / (float)screen_h;       /* top of rect in tex */
 
     float quad[] = {
-        ndc_x,        ndc_y,          uv_x,        uv_y,
-        ndc_x+ndc_w,  ndc_y,          uv_x+uv_w,   uv_y,
-        ndc_x+ndc_w,  ndc_y+ndc_h,    uv_x+uv_w,   uv_y+uv_h,
-        ndc_x,        ndc_y,          uv_x,        uv_y,
-        ndc_x+ndc_w,  ndc_y+ndc_h,    uv_x+uv_w,   uv_y+uv_h,
-        ndc_x,        ndc_y+ndc_h,    uv_x,        uv_y+uv_h,
+        ndc_x0, ndc_y0,  uv_x0, uv_y0,  /* bottom-left */
+        ndc_x1, ndc_y0,  uv_x1, uv_y0,  /* bottom-right */
+        ndc_x1, ndc_y1,  uv_x1, uv_y1,  /* top-right */
+        ndc_x0, ndc_y0,  uv_x0, uv_y0,  /* bottom-left */
+        ndc_x1, ndc_y1,  uv_x1, uv_y1,  /* top-right */
+        ndc_x0, ndc_y1,  uv_x0, uv_y1,  /* top-left */
     };
 
     glBindVertexArray(gs->blur_vao);
