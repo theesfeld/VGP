@@ -101,6 +101,7 @@ static vgp_action_type_t parse_action_string(const char *str, char *cmd_out)
         { "expose",            VGP_ACTION_EXPOSE },
         { "lock",              VGP_ACTION_LOCK },
         { "toggle_float",     VGP_ACTION_TOGGLE_FLOAT },
+        { "toggle_dark_light", VGP_ACTION_TOGGLE_DARK_LIGHT },
         { "snap_left",         VGP_ACTION_SNAP_LEFT },
         { "snap_right",        VGP_ACTION_SNAP_RIGHT },
         { "snap_top",          VGP_ACTION_SNAP_TOP },
@@ -322,6 +323,19 @@ void vgp_keybind_execute(struct vgp_server *server, const vgp_keybind_t *bind)
         vgp_lockscreen_lock(&server->lockscreen);
         vgp_renderer_schedule_frame(&server->renderer);
         break;
+
+    case VGP_ACTION_TOGGLE_DARK_LIGHT: {
+        /* Toggle between dark and light theme by reloading config with swapped theme */
+        const char *current = server->config.general.theme_name;
+        const char *next = strcmp(current, "light") == 0 ? "dark" : "light";
+        snprintf(server->config.general.theme_name,
+                 sizeof(server->config.general.theme_name), "%s", next);
+        /* Reload theme colors */
+        vgp_config_load(&server->config, server->config.config_path);
+        vgp_renderer_schedule_frame(&server->renderer);
+        VGP_LOG_INFO(TAG, "toggled theme: %s -> %s", current, next);
+        break;
+    }
 
     case VGP_ACTION_TOGGLE_FLOAT: {
         vgp_window_t *focused = server->compositor.focused;

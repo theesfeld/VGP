@@ -33,7 +33,10 @@ void vgp_renderer_schedule_frame(vgp_renderer_t *renderer);
 /* Render one output (full repaint) */
 struct vgp_notify;
 struct vgp_animation_mgr;
+struct vgp_notify;
+struct vgp_animation_mgr;
 struct vgp_lockscreen;
+struct vgp_menu;
 
 void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  vgp_drm_backend_t *drm,
@@ -43,6 +46,7 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  vgp_theme_t *theme,
                                  struct vgp_notify *notify,
                                  struct vgp_animation_mgr *anims,
-                                 struct vgp_lockscreen *lock);
+                                 struct vgp_lockscreen *lock,
+                                 struct vgp_menu *menu);
 
 #endif /* VGP_RENDERER_H */

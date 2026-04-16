@@ -25,29 +25,42 @@ static void on_event(vgp_connection_t *conn, const vgp_event_t *ev, void *data)
         ctx->key_pressed = true;
         ctx->dirty = true;
         break;
-    case VGP_EVENT_MOUSE_BUTTON:
-        ctx->mouse_row = (int)(ev->mouse_button.y / 20.0f);
-        ctx->mouse_col = (int)(ev->mouse_button.x / 9.0f);
+    case VGP_EVENT_MOUSE_BUTTON: {
+        float cw = ctx->cell_px_w > 0 ? ctx->cell_px_w : 9.0f;
+        float ch = ctx->cell_px_h > 0 ? ctx->cell_px_h : 20.0f;
+        ctx->mouse_row = (int)(ev->mouse_button.y / ch);
+        ctx->mouse_col = (int)(ev->mouse_button.x / cw);
         if (ev->mouse_button.pressed && !ctx->mouse_pressed)
             ctx->mouse_clicked = true;
         ctx->mouse_pressed = ev->mouse_button.pressed;
         ctx->dirty = true;
         break;
-    case VGP_EVENT_MOUSE_MOVE:
-        ctx->mouse_row = (int)(ev->mouse_move.y / 20.0f);
-        ctx->mouse_col = (int)(ev->mouse_move.x / 9.0f);
+    }
+    case VGP_EVENT_MOUSE_MOVE: {
+        float cw = ctx->cell_px_w > 0 ? ctx->cell_px_w : 9.0f;
+        float ch = ctx->cell_px_h > 0 ? ctx->cell_px_h : 20.0f;
+        ctx->mouse_row = (int)(ev->mouse_move.y / ch);
+        ctx->mouse_col = (int)(ev->mouse_move.x / cw);
         ctx->dirty = true;
         break;
+    }
     case VGP_EVENT_MOUSE_SCROLL:
         ctx->scroll_offset -= (int)(ev->scroll.dy / 15.0f);
         if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
         ctx->dirty = true;
         break;
     case VGP_EVENT_CONFIGURE:
-        ctx->cols = (int)(ev->configure.width / 9.0f);
-        ctx->rows = (int)(ev->configure.height / 20.0f);
+        ctx->pixel_w = (float)ev->configure.width;
+        ctx->pixel_h = (float)ev->configure.height;
+        ctx->cols = (int)(ctx->pixel_w / 9.0f);
+        ctx->rows = (int)(ctx->pixel_h / 20.0f);
         if (ctx->cols > VUI_MAX_COLS) ctx->cols = VUI_MAX_COLS;
         if (ctx->rows > VUI_MAX_ROWS) ctx->rows = VUI_MAX_ROWS;
+        if (ctx->cols < 10) ctx->cols = 10;
+        if (ctx->rows < 5) ctx->rows = 5;
+        /* Update pixel-to-cell ratio */
+        ctx->cell_px_w = ctx->pixel_w / (float)ctx->cols;
+        ctx->cell_px_h = ctx->pixel_h / (float)ctx->rows;
         ctx->dirty = true;
         break;
     case VGP_EVENT_CLOSE:
@@ -92,6 +105,10 @@ int vui_init(vui_ctx_t *ctx, const char *title, int width, int height)
     ctx->running = true;
     ctx->dirty = true;
     ctx->selected_item = -1;
+    ctx->pixel_w = (float)width;
+    ctx->pixel_h = (float)height;
+    ctx->cell_px_w = ctx->pixel_w / (float)ctx->cols;
+    ctx->cell_px_h = ctx->pixel_h / (float)ctx->rows;
     return 0;
 }
 

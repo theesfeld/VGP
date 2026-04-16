@@ -1,103 +1,54 @@
 # VGP Development Roadmap
 
-## Completed
+## Done (15,000+ lines of C)
 
-- [x] DRM/KMS + GPU rendering (NanoVG/GLES3)
-- [x] libinput + xkbcommon input, libseat session management
-- [x] Floating window management (move, resize, snap, maximize, minimize)
-- [x] Multi-monitor + per-monitor workspaces
-- [x] IPC (Unix socket, cell grid protocol, pixel surfaces)
-- [x] Configurable keybinds + TOML config + settings GUI with write-back
-- [x] Application launcher (fuzzy .desktop search)
-- [x] GLSL shader backgrounds (parallax, shadows, mouse reactive)
-- [x] Taskbar + workspace indicators + clock (configurable widgets)
-- [x] D-Bus notification daemon
-- [x] Clipboard, screenshots, selection, scrollback
-- [x] Terminal emulator (vector cell grid, server-side rendering)
-- [x] Window animations, drop shadows, window opacity
-- [x] Context-sensitive cursor shapes, expose/overview mode
-- [x] Native apps: settings, files, monitor, image viewer
-- [x] Lock screen (idle timeout, password, themed)
-- [x] Session management (auto-start)
-- [x] Three themes (dark, nerv, light)
-- [x] AUR PKGBUILD, .desktop files, greeter session
+Server: DRM/KMS, NanoVG/GLES3, libinput, xkbcommon, libseat, D-Bus notifications, GLSL shaders, multi-monitor workspaces, cell grid protocol, IPC control socket, session save, power management, lock screen, window animations, drop shadows, opacity, tiling (4 algorithms), expose mode, cursor themes, context menu
+
+Terminal: vector cell grid, server-side rendering, selection, clipboard, scrollback, bracketed paste, configurable
+
+Apps: launcher, settings (editable + write-back), files, monitor, image viewer, shared UI toolkit
+
+Config: TOML, themes, shaders, keybinds, panel widgets, window rules, tiling, lock screen, auto-start, monitors
+
+Infra: PKGBUILD, .desktop files, greeter session, GitHub Actions, wiki (7 pages)
 
 ---
 
-## In Progress
+## What's Left
 
-### Tiling Window Manager
-- [ ] Tiling layout engine (user selectable algorithm)
-- [ ] Algorithms: golden ratio, equal split, master+stack, spiral
-- [ ] wm_mode config: floating, tiling, hybrid
-- [ ] Per-workspace mode (some tile, some float)
-- [ ] Configurable gaps (inner + outer)
-- [ ] Toggle float per window (Super+Space)
-- [ ] Resize splits with mouse or keybind
-- [ ] Tiling direction (horizontal/vertical split)
+### Must-Have (before v1.0)
+- [ ] Panel widget rendering driven by config (currently hardcoded in renderer)
+- [ ] Terminal font size change at runtime (Ctrl+Plus/Minus)
+- [ ] Theme hot-reload (inotify watch on theme.toml + shaders)
+- [ ] Dark/light mode toggle keybind
+- [ ] Desktop menu actions wired up (currently menu items have NULL callbacks)
+- [ ] Right-click on window titlebar for window-specific menu (close, minimize, maximize, float, move to workspace)
+- [ ] Resize tiling splits with mouse drag
+- [ ] CI/CD: test the release workflow end-to-end (tag + build + AUR)
+- [ ] Panel hover effects on taskbar entries
 
-### CI/CD + Packaging
-- [ ] GitHub Actions: build on tag push, create release tarball
-- [ ] GitHub Actions: auto-submit PKGBUILD to AUR
-- [ ] AUR SSH key for automated publishing
-- [ ] Release versioning (git tag)
-- [ ] Test PKGBUILD end-to-end
-
-### Wiki / Documentation
-- [ ] What VGP Is / What VGP Is Not
-- [ ] Architecture overview (server, protocol, GPU pipeline)
-- [ ] Installation: AUR (yay -S vgp-git)
-- [ ] Installation: source build (Arch, Fedora, Debian/Ubuntu, NixOS, Void, Gentoo)
-- [ ] Dependencies per distro (package name mapping)
-- [ ] Configuration reference (config.toml every option)
-- [ ] Terminal configuration reference (terminal.toml)
-- [ ] Theme creation guide (theme.toml + shaders)
-- [ ] Shader development guide (uniforms, examples)
-- [ ] Building native apps (libvgp + libvgp-ui SDK)
-- [ ] Keybind reference
-- [ ] FAQ
-
----
-
-## Remaining
-
-### Polish
-- [ ] Window rules (per-app: float, workspace, size)
-- [ ] Panel hover effects, middle-click close
-- [ ] Right-click context menu
-- [ ] Panel widget rendering from config
-- [ ] Monospace grid precision (zero ANSI gaps)
-- [ ] Terminal font switching (Ctrl+Plus/Minus)
-- [ ] Terminal URL detection
-- [ ] Terminal search (Ctrl+Shift+F)
-
-### Theme System
-- [ ] NERV theme: angular decorations, warning stripes
-- [ ] Light theme: complete styling
-- [ ] Dark/light toggle (Super+Shift+T)
-- [ ] Theme hot-reload (inotify)
-- [ ] Shader library (aurora, matrix, gradient)
-- [ ] Calendar popup
-- [ ] Theme packaging (.vgptheme)
-- [ ] Theme/shader browser in settings
-
-### Visual Effects
-- [ ] Blur behind transparent windows
-- [ ] Workspace slide animation
+### Should-Have (v1.1)
+- [ ] Blur behind transparent windows (FBO + gaussian blur shader)
+- [ ] Smooth workspace slide animation
 - [ ] Taskbar window preview on hover
-- [ ] Pluggable notification animations
-- [ ] Pluggable window animations (wobbly, flame)
+- [ ] Terminal URL detection + clickable links
+- [ ] Terminal search (Ctrl+Shift+F)
+- [ ] Calendar popup when clicking clock
+- [ ] Monospace grid precision (zero sub-pixel gaps between ANSI blocks)
+- [ ] NERV theme fully styled (angular decorations, warning stripes)
+- [ ] Light theme fully styled
+- [ ] Shader library (aurora, matrix rain, gradient, more backgrounds)
+- [ ] Theme packaging (.vgptheme zip format)
+- [ ] Pluggable window/notification animations
 
-### Apps
-- [ ] vgp-edit: text editor + syntax highlighting
-- [ ] vgp-bar: standalone scriptable bar
-- [ ] Settings: color picker, shader previews
-- [ ] Client SDK docs
-
-### Production
-- [ ] Drag and drop
-- [ ] Monitor arrangement GUI
-- [ ] Session persistence (save/restore layout)
-- [ ] Power management (DPMS, suspend)
-- [ ] IPC control (swaymsg-style scripting)
-- [ ] Accessibility
+### Nice-to-Have (v1.2+)
+- [ ] vgp-edit: text editor with syntax highlighting
+- [ ] vgp-bar: standalone scriptable bar (polybar replacement)
+- [ ] Settings GUI: color picker widget
+- [ ] Settings GUI: shader effect live preview
+- [ ] Monitor arrangement GUI (drag to position)
+- [ ] Drag and drop between windows
+- [ ] Session layout restore (reopen windows at saved positions)
+- [ ] Accessibility (keyboard-only nav, high contrast, screen reader hooks)
+- [ ] Client SDK documentation
+- [ ] DPMS proper implementation (DRM connector properties)

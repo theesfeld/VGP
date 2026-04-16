@@ -103,6 +103,7 @@ void vgp_config_load_defaults(vgp_config_t *config)
         { "Super+Tab",            "expose" },
         { "Super+l",              "lock" },
         { "Super+space",          "toggle_float" },
+        { "Super+Shift+t",        "toggle_dark_light" },
         { "Super+Left",           "snap_left" },
         { "Super+Right",          "snap_right" },
         { "Super+Up",             "snap_top" },

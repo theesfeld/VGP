@@ -55,6 +55,10 @@ typedef struct vui_ctx {
     char              last_utf8[8];
     bool              key_pressed;
 
+    /* Pixel dimensions (from configure events) */
+    float             pixel_w, pixel_h;
+    float             cell_px_w, cell_px_h; /* pixels per cell */
+
     /* App state */
     bool              running;
     bool              dirty;

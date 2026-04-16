@@ -4,6 +4,7 @@
 #include "notify.h"
 #include "animation.h"
 #include "lockscreen.h"
+#include "menu.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
 
@@ -554,6 +555,19 @@ static void render_statusbar(vgp_render_backend_t *b, void *ctx,
             float eh = bar_h - 8.0f;
             float ey = bar_y + 4.0f;
 
+            /* Hover detection */
+            int32_t out_offset = 0;
+            for (int oi = 0; oi < comp->output_count; oi++) {
+                if (comp->outputs[oi].workspace == workspace) {
+                    out_offset = comp->outputs[oi].x;
+                    break;
+                }
+            }
+            float local_mx = comp->cursor.x - (float)out_offset;
+            float local_my = comp->cursor.y;
+            bool is_hover = (local_my >= ey && local_my < ey + eh &&
+                              local_mx >= ex + 2 && local_mx < ex + 2 + ew);
+
             /* Entry background */
             if (is_focused) {
                 b->ops->draw_rounded_rect(b, ctx, ex + 2, ey, ew, eh, 4.0f,
@@ -561,6 +575,9 @@ static void render_statusbar(vgp_render_backend_t *b, void *ctx,
                 /* Active indicator bar at bottom */
                 b->ops->draw_rounded_rect(b, ctx, ex + 6, ey + eh - 3, ew - 8, 2.0f, 1.0f,
                                            ac->r, ac->g, ac->b, 1.0f);
+            } else if (is_hover) {
+                b->ops->draw_rounded_rect(b, ctx, ex + 2, ey, ew, eh, 4.0f,
+                                           ac->r * 0.15f, ac->g * 0.15f, ac->b * 0.15f, 0.4f);
             } else {
                 b->ops->draw_rounded_rect(b, ctx, ex + 2, ey, ew, eh, 4.0f,
                                            tc->r * 0.1f, tc->g * 0.1f, tc->b * 0.1f, 0.3f);
@@ -752,7 +769,8 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  vgp_theme_t *theme,
                                  struct vgp_notify *notify,
                                  struct vgp_animation_mgr *anims,
-                                 struct vgp_lockscreen *lock)
+                                 struct vgp_lockscreen *lock,
+                                 struct vgp_menu *menu)
 {
     if (output->page_flip_pending)
         return;
@@ -899,7 +917,11 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                            (float)output->width, (float)output->height,
                            theme->statusbar_font_size);
 
-    /* Layer 5: Lock screen (covers everything when locked) */
+    /* Layer 5: Context menu (on active output) */
+    if (menu && menu->visible && output_idx == comp->active_output)
+        vgp_menu_render(menu, b, ctx, theme->statusbar_font_size);
+
+    /* Layer 6: Lock screen (covers everything when locked) */
     if (lock && vgp_lockscreen_is_locked(lock)) {
         static float lock_time = 0;
         lock_time += 0.016f;

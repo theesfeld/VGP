@@ -20,7 +20,7 @@ dep_math  = cc.find_library('m')
 dep_dl    = cc.find_library('dl')
 dep_dbus  = dependency('dbus-1', required : false)
 dep_seat  = dependency('libseat')
-dep_crypt = cc.find_library('crypt')
+dep_pam   = cc.find_library('pam')
 
 # plutovg as a subproject
 plutovg_proj = subproject('plutovg')
@@ -121,7 +121,7 @@ executable('vgp',
     dep_dl,
     dep_dbus,
     dep_seat,
-    dep_crypt,
+    dep_pam,
   ] + gpu_deps,
   install : true,
 )

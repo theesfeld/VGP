@@ -37,7 +37,28 @@ void vgp_server_send_configure(vgp_server_t *server, vgp_window_t *win)
     vgp_ipc_send(client, &msg, sizeof(msg));
 }
 
-/* Re-tile a workspace if in tiling mode */
+/* Desktop menu action callbacks */
+static void menu_action_terminal(void *srv, int idx) {
+    vgp_server_t *s = srv; (void)idx;
+    vgp_spawn(s, s->config.general.terminal_cmd);
+}
+static void menu_action_files(void *srv, int idx) {
+    (void)idx; vgp_spawn(srv, "vgp-files");
+}
+static void menu_action_settings(void *srv, int idx) {
+    (void)idx; vgp_spawn(srv, "vgp-settings");
+}
+static void menu_action_lock(void *srv, int idx) {
+    vgp_server_t *s = srv; (void)idx;
+    vgp_lockscreen_lock(&s->lockscreen);
+    vgp_renderer_schedule_frame(&s->renderer);
+}
+static void menu_action_quit(void *srv, int idx) {
+    vgp_server_t *s = srv; (void)idx;
+    vgp_event_loop_stop(&s->loop);
+}
+
+/* Re-tile a workspace if in tiling mode, and notify all affected clients */
 static void server_retile(vgp_server_t *server, int workspace)
 {
     if (strcmp(server->config.general.wm_mode, "floating") == 0) return;
@@ -49,6 +70,16 @@ static void server_retile(vgp_server_t *server, int workspace)
         .smart_gaps = server->config.general.tile_smart_gaps,
     };
     vgp_compositor_retile(&server->compositor, workspace, &tc, &server->config.theme);
+
+    /* Send WINDOW_CONFIGURE to all windows that were tiled so they can
+     * adjust their grid dimensions (terminal cols/rows, app layout) */
+    for (int i = 0; i < VGP_MAX_WINDOWS; i++) {
+        vgp_window_t *w = &server->compositor.windows[i];
+        if (w->used && w->visible && w->workspace == workspace &&
+            w->decorated && !w->floating_override) {
+            vgp_server_send_configure(server, w);
+        }
+    }
 }
 
 static void statusbar_tick(void *data)
@@ -179,13 +210,13 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
                           server->config.lockscreen.enabled,
                           server->config.lockscreen.timeout_min);
     vgp_menu_init(&server->desktop_menu);
-    vgp_menu_add(&server->desktop_menu, "Terminal", NULL);
-    vgp_menu_add(&server->desktop_menu, "Files", NULL);
-    vgp_menu_add(&server->desktop_menu, "Settings", NULL);
+    vgp_menu_add(&server->desktop_menu, "Terminal", menu_action_terminal);
+    vgp_menu_add(&server->desktop_menu, "Files", menu_action_files);
+    vgp_menu_add(&server->desktop_menu, "Settings", menu_action_settings);
     vgp_menu_add_separator(&server->desktop_menu);
-    vgp_menu_add(&server->desktop_menu, "Lock Screen", NULL);
+    vgp_menu_add(&server->desktop_menu, "Lock Screen", menu_action_lock);
     vgp_menu_add_separator(&server->desktop_menu);
-    vgp_menu_add(&server->desktop_menu, "Quit VGP", NULL);
+    vgp_menu_add(&server->desktop_menu, "Quit VGP", menu_action_quit);
     vgp_ipc_control_init(&server->ctl, &server->loop);
     vgp_power_init(&server->power, 15);
 
@@ -442,6 +473,35 @@ void vgp_server_handle_pointer_button(vgp_server_t *server,
 
     if (pressed) {
         cursor->buttons |= (1u << button);
+
+        /* Context menu: check if menu is visible first */
+        if (server->desktop_menu.visible) {
+            float local_mx = cursor->x;
+            float local_my = cursor->y;
+            /* Translate to active output local coords */
+            int aout = vgp_compositor_output_at_cursor(&server->compositor);
+            local_mx -= (float)server->compositor.outputs[aout].x;
+            if (vgp_menu_click(&server->desktop_menu, local_mx, local_my, server)) {
+                vgp_renderer_schedule_frame(&server->renderer);
+                goto button_done;
+            }
+        }
+
+        /* Right-click: show context menu */
+        if (button == 0x111 && !grab->active) { /* BTN_RIGHT */
+            int32_t cx = (int32_t)cursor->x;
+            int32_t cy = (int32_t)cursor->y;
+            vgp_window_t *win = vgp_compositor_window_at(&server->compositor, cx, cy);
+            if (!win) {
+                /* Right-click on desktop -- show desktop menu */
+                int aout = vgp_compositor_output_at_cursor(&server->compositor);
+                float local_x = cursor->x - (float)server->compositor.outputs[aout].x;
+                float local_y = cursor->y;
+                vgp_menu_show(&server->desktop_menu, local_x, local_y);
+                vgp_renderer_schedule_frame(&server->renderer);
+                goto button_done;
+            }
+        }
 
         if (!grab->active) {
             int32_t cx = (int32_t)cursor->x;
@@ -1005,6 +1065,7 @@ void vgp_server_render_frame(vgp_server_t *server)
                                     &server->config.theme,
                                     &server->notify,
                                     &server->animations,
-                                    &server->lockscreen);
+                                    &server->lockscreen,
+                                    &server->desktop_menu);
     }
 }

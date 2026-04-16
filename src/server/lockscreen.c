@@ -4,10 +4,9 @@
 #include <string.h>
 #include <math.h>
 #include <unistd.h>
-#include <shadow.h>
-#include <crypt.h>
 #include <pwd.h>
 #include <stdlib.h>
+#include <security/pam_appl.h>
 
 #define TAG "lock"
 
@@ -45,28 +44,51 @@ void vgp_lockscreen_lock(vgp_lockscreen_t *ls)
     VGP_LOG_INFO(TAG, "screen locked");
 }
 
+/* PAM conversation function */
+static const char *pam_password_ptr = NULL;
+
+static int pam_conv_cb(int num_msg, const struct pam_message **msg,
+                        struct pam_response **resp, void *appdata_ptr)
+{
+    (void)appdata_ptr;
+    *resp = calloc((size_t)num_msg, sizeof(struct pam_response));
+    if (!*resp) return PAM_BUF_ERR;
+
+    for (int i = 0; i < num_msg; i++) {
+        if (msg[i]->msg_style == PAM_PROMPT_ECHO_OFF ||
+            msg[i]->msg_style == PAM_PROMPT_ECHO_ON) {
+            (*resp)[i].resp = strdup(pam_password_ptr ? pam_password_ptr : "");
+        }
+    }
+    return PAM_SUCCESS;
+}
+
 static bool verify_password(const char *password)
 {
-    /* Verify against the current user's password via PAM-style crypt.
-     * This reads /etc/shadow which requires either root or
-     * the process to be in the 'shadow' group. If that fails,
-     * fall back to accepting any non-empty password (for testing). */
     uid_t uid = getuid();
     struct passwd *pw = getpwuid(uid);
     if (!pw) return false;
 
-    struct spwd *sp = getspnam(pw->pw_name);
-    if (sp && sp->sp_pwdp) {
-        char *result = crypt(password, sp->sp_pwdp);
-        if (result && strcmp(result, sp->sp_pwdp) == 0)
-            return true;
+    pam_password_ptr = password;
+
+    struct pam_conv conv = { .conv = pam_conv_cb, .appdata_ptr = NULL };
+    pam_handle_t *pamh = NULL;
+
+    int ret = pam_start("login", pw->pw_name, &conv, &pamh);
+    if (ret != PAM_SUCCESS) {
+        VGP_LOG_WARN(TAG, "pam_start failed: %s", pam_strerror(pamh, ret));
         return false;
     }
 
-    /* Fallback: if we can't read shadow, accept non-empty password
-     * (this is for testing when not running as root) */
-    VGP_LOG_WARN(TAG, "cannot read shadow file, accepting any password");
-    return password[0] != '\0';
+    ret = pam_authenticate(pamh, 0);
+    bool ok = (ret == PAM_SUCCESS);
+
+    if (!ok)
+        VGP_LOG_DEBUG(TAG, "pam_authenticate failed: %s", pam_strerror(pamh, ret));
+
+    pam_end(pamh, ret);
+    pam_password_ptr = NULL;
+    return ok;
 }
 
 void vgp_lockscreen_key(vgp_lockscreen_t *ls, uint32_t keysym,
