@@ -132,15 +132,25 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
     b->ops->draw_line(b, ctx, x + 4, y + th, x + w - 4, y + th, 0.5f,
                        bc->r, bc->g, bc->b, border_alpha * 0.5f);
 
-    /* === PROJECTED TITLE TEXT ===
-     * Bright, crisp, like projected onto glass. No shadows. */
+    /* === ETCHED TITLE TEXT ===
+     * Static text = etched into the glass surface.
+     * Dark groove shadow below-right, faint highlight above-left,
+     * dimmer main text. Like a manufacturer mark pressed into glass. */
     if (win->title[0]) {
         float text_x = x + 10.0f;
         float text_y = y + th * 0.5f + fs * 0.35f;
+        float etch_alpha = focused ? 0.55f : 0.30f;
+        /* Groove shadow (dark, offset down-right) */
+        b->ops->draw_text(b, ctx, win->title, -1, text_x + 0.8f, text_y + 0.8f, fs,
+                           0.0f, 0.0f, 0.0f, etch_alpha * 0.6f);
+        /* Ridge highlight (bright, offset up-left) */
+        b->ops->draw_text(b, ctx, win->title, -1, text_x - 0.4f, text_y - 0.4f, fs,
+                           1.0f, 1.0f, 1.0f, etch_alpha * 0.15f);
+        /* Main text (dimmer than projected -- it's part of the glass) */
         const vgp_color_t *tc = focused ? &theme->title_text_active
                                         : &theme->title_text_inactive;
         b->ops->draw_text(b, ctx, win->title, -1, text_x, text_y, fs,
-                           tc->r, tc->g, tc->b, focused ? 0.9f : 0.5f);
+                           tc->r, tc->g, tc->b, etch_alpha);
     }
 
     /* === CONTROL BUTTONS (small circles, MFD style) === */
