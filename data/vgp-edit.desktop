@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=VGP Edit
+Comment=Text editor
+Exec=vgp-edit %f
+Terminal=false
+Categories=TextEditor;VGP;
+MimeType=text/plain;

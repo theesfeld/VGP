@@ -73,7 +73,8 @@ typedef struct vgp_window {
     uint16_t           cursor_row, cursor_col;
     uint8_t            cursor_visible;
     uint8_t            cursor_shape;
-    bool               has_cellgrid;   /* true = use cell grid, false = pixel surface */
+    bool               has_cellgrid;
+    float              font_size_override; /* 0 = use default, >0 = client requested */
 } vgp_window_t;
 
 /* Compute content rect from frame rect using theme decoration sizes */

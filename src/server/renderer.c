@@ -163,7 +163,8 @@ static void render_cellgrid(vgp_render_backend_t *b, void *ctx,
     /* Compute cell dimensions from content area */
     float cell_w = cw / (float)cols;
     float cell_h = ch / (float)rows;
-    float font_size = cell_h * 0.75f;
+    float font_size = (win->font_size_override > 0) ?
+        win->font_size_override : cell_h * 0.75f;
     float baseline_offset = cell_h * 0.72f;
 
     b->ops->push_state(b, ctx);

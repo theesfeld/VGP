@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <poll.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <errno.h>
 
@@ -401,6 +402,44 @@ static void on_vgp_event(vgp_connection_t *conn, const vgp_event_t *ev, void *da
                 free(clip);
                 fprintf(stderr, "  pasted %zu bytes from clipboard\n", len);
             }
+            break;
+        }
+
+        /* Ctrl+Plus/Minus/0 = font size */
+        if (ctrl && (sym == 0x002B || sym == 0xFFAB)) { /* + or KP_Add */
+            term->config.font_size += 1.0f;
+            if (term->config.font_size > 36.0f) term->config.font_size = 36.0f;
+            /* Tell server about new font size */
+            vgp_msg_set_font_size_t msg = {
+                .header = { .magic = 0x56475000, .type = 0x0091,
+                            .length = sizeof(msg), .window_id = term->window_id },
+                .font_size = term->config.font_size,
+            };
+            send(vgp_fd(term->conn), &msg, sizeof(msg), MSG_NOSIGNAL);
+            fprintf(stderr, "  font size: %.0f\n", term->config.font_size);
+            break;
+        }
+        if (ctrl && (sym == 0x002D || sym == 0xFFAD)) { /* - or KP_Subtract */
+            term->config.font_size -= 1.0f;
+            if (term->config.font_size < 8.0f) term->config.font_size = 8.0f;
+            vgp_msg_set_font_size_t msg = {
+                .header = { .magic = 0x56475000, .type = 0x0091,
+                            .length = sizeof(msg), .window_id = term->window_id },
+                .font_size = term->config.font_size,
+            };
+            send(vgp_fd(term->conn), &msg, sizeof(msg), MSG_NOSIGNAL);
+            fprintf(stderr, "  font size: %.0f\n", term->config.font_size);
+            break;
+        }
+        if (ctrl && sym == 0x0030) { /* 0 = reset */
+            term->config.font_size = 14.0f;
+            vgp_msg_set_font_size_t msg = {
+                .header = { .magic = 0x56475000, .type = 0x0091,
+                            .length = sizeof(msg), .window_id = term->window_id },
+                .font_size = term->config.font_size,
+            };
+            send(vgp_fd(term->conn), &msg, sizeof(msg), MSG_NOSIGNAL);
+            fprintf(stderr, "  font size: reset to %.0f\n", term->config.font_size);
             break;
         }
 

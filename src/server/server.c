@@ -58,6 +58,37 @@ static void menu_action_quit(void *srv, int idx) {
     vgp_event_loop_stop(&s->loop);
 }
 
+/* Window menu action callbacks */
+static void wmenu_close(void *srv, int idx) {
+    vgp_server_t *s = srv; (void)idx;
+    if (s->menu_target_win && s->menu_target_win->used)
+        vgp_compositor_destroy_window(&s->compositor, s->menu_target_win);
+    s->menu_target_win = NULL;
+    vgp_renderer_schedule_frame(&s->renderer);
+}
+static void wmenu_minimize(void *srv, int idx) {
+    vgp_server_t *s = srv; (void)idx;
+    if (s->menu_target_win && s->menu_target_win->used)
+        vgp_compositor_minimize_window(&s->compositor, s->menu_target_win);
+    s->menu_target_win = NULL;
+    vgp_renderer_schedule_frame(&s->renderer);
+}
+static void wmenu_maximize(void *srv, int idx) {
+    vgp_server_t *s = srv; (void)idx;
+    if (s->menu_target_win && s->menu_target_win->used && s->drm.output_count > 0)
+        vgp_compositor_maximize_window(&s->compositor, s->menu_target_win,
+            s->drm.outputs[0].width, s->drm.outputs[0].height, &s->config.theme);
+    s->menu_target_win = NULL;
+    vgp_renderer_schedule_frame(&s->renderer);
+}
+static void wmenu_toggle_float(void *srv, int idx) {
+    vgp_server_t *s = srv; (void)idx;
+    if (s->menu_target_win && s->menu_target_win->used)
+        s->menu_target_win->floating_override = !s->menu_target_win->floating_override;
+    s->menu_target_win = NULL;
+    vgp_renderer_schedule_frame(&s->renderer);
+}
+
 /* Re-tile a workspace if in tiling mode, and notify all affected clients */
 static void server_retile(vgp_server_t *server, int workspace)
 {
@@ -217,8 +248,20 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
     vgp_menu_add(&server->desktop_menu, "Lock Screen", menu_action_lock);
     vgp_menu_add_separator(&server->desktop_menu);
     vgp_menu_add(&server->desktop_menu, "Quit VGP", menu_action_quit);
+    vgp_menu_init(&server->window_menu);
+    vgp_menu_add(&server->window_menu, "Close", wmenu_close);
+    vgp_menu_add(&server->window_menu, "Minimize", wmenu_minimize);
+    vgp_menu_add(&server->window_menu, "Maximize", wmenu_maximize);
+    vgp_menu_add_separator(&server->window_menu);
+    vgp_menu_add(&server->window_menu, "Toggle Float", wmenu_toggle_float);
+    server->menu_target_win = NULL;
+
     vgp_ipc_control_init(&server->ctl, &server->loop);
     vgp_power_init(&server->power, 15);
+
+    /* Theme hot-reload */
+    vgp_hotreload_init(&server->hotreload, &server->loop,
+                         server->config.general.theme_dir, NULL);
 
     /* 13. Notification daemon (D-Bus) */
     vgp_notify_init(&server->notify, &server->loop);
@@ -474,14 +517,19 @@ void vgp_server_handle_pointer_button(vgp_server_t *server,
     if (pressed) {
         cursor->buttons |= (1u << button);
 
-        /* Context menu: check if menu is visible first */
-        if (server->desktop_menu.visible) {
+        /* Context menu: check if any menu is visible first */
+        if (server->desktop_menu.visible || server->window_menu.visible) {
             float local_mx = cursor->x;
             float local_my = cursor->y;
-            /* Translate to active output local coords */
             int aout = vgp_compositor_output_at_cursor(&server->compositor);
             local_mx -= (float)server->compositor.outputs[aout].x;
-            if (vgp_menu_click(&server->desktop_menu, local_mx, local_my, server)) {
+            if (server->desktop_menu.visible &&
+                vgp_menu_click(&server->desktop_menu, local_mx, local_my, server)) {
+                vgp_renderer_schedule_frame(&server->renderer);
+                goto button_done;
+            }
+            if (server->window_menu.visible &&
+                vgp_menu_click(&server->window_menu, local_mx, local_my, server)) {
                 vgp_renderer_schedule_frame(&server->renderer);
                 goto button_done;
             }
@@ -492,11 +540,21 @@ void vgp_server_handle_pointer_button(vgp_server_t *server,
             int32_t cx = (int32_t)cursor->x;
             int32_t cy = (int32_t)cursor->y;
             vgp_window_t *win = vgp_compositor_window_at(&server->compositor, cx, cy);
+            int aout = vgp_compositor_output_at_cursor(&server->compositor);
+            float local_x = cursor->x - (float)server->compositor.outputs[aout].x;
+            float local_y = cursor->y;
+
+            if (win && win->decorated) {
+                vgp_hit_region_t hit = vgp_window_hit_test(win,
+                    &server->config.theme, cx, cy);
+                if (hit == VGP_HIT_TITLEBAR) {
+                    server->menu_target_win = win;
+                    vgp_menu_show(&server->window_menu, local_x, local_y);
+                    vgp_renderer_schedule_frame(&server->renderer);
+                    goto button_done;
+                }
+            }
             if (!win) {
-                /* Right-click on desktop -- show desktop menu */
-                int aout = vgp_compositor_output_at_cursor(&server->compositor);
-                float local_x = cursor->x - (float)server->compositor.outputs[aout].x;
-                float local_y = cursor->y;
                 vgp_menu_show(&server->desktop_menu, local_x, local_y);
                 vgp_renderer_schedule_frame(&server->renderer);
                 goto button_done;
@@ -918,6 +976,20 @@ void vgp_server_handle_message(vgp_server_t *server,
         break;
     }
 
+    case VGP_MSG_SET_FONT_SIZE: {
+        vgp_msg_set_font_size_t *msg = (vgp_msg_set_font_size_t *)hdr;
+        uint32_t win_id = hdr->window_id;
+        if (win_id > 0 && win_id <= VGP_MAX_WINDOWS) {
+            vgp_window_t *win = &server->compositor.windows[win_id - 1];
+            if (win->used) {
+                win->font_size_override = msg->font_size;
+                VGP_LOG_DEBUG(TAG, "window %u font size: %.0f", win_id, msg->font_size);
+                vgp_renderer_schedule_frame(&server->renderer);
+            }
+        }
+        break;
+    }
+
     case VGP_MSG_CELLGRID: {
         vgp_msg_cellgrid_t *msg = (vgp_msg_cellgrid_t *)hdr;
         uint32_t win_id = hdr->window_id;
@@ -1066,6 +1138,7 @@ void vgp_server_render_frame(vgp_server_t *server)
                                     &server->notify,
                                     &server->animations,
                                     &server->lockscreen,
-                                    &server->desktop_menu);
+                                    server->desktop_menu.visible ?
+                                        &server->desktop_menu : &server->window_menu);
     }
 }

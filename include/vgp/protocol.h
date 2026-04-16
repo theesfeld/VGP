@@ -51,6 +51,7 @@ typedef enum {
 
     /* Terminal cell grid (vector text protocol) */
     VGP_MSG_CELLGRID         = 0x0090,
+    VGP_MSG_SET_FONT_SIZE    = 0x0091,  /* client -> server: request font size change */
 
     /* Drawing commands (server-side rendering) */
     VGP_MSG_DRAW_BEGIN       = 0x0030,
@@ -184,5 +185,10 @@ typedef struct vgp_msg_cellgrid {
     uint8_t  _pad[2];
     /* followed by: rows * cols * sizeof(vgp_cell_t) bytes */
 } __attribute__((packed)) vgp_msg_cellgrid_t;
+
+typedef struct vgp_msg_set_font_size {
+    vgp_msg_header_t header;
+    float            font_size;
+} __attribute__((packed)) vgp_msg_set_font_size_t;
 
 #endif /* VGP_PROTOCOL_H */

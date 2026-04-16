@@ -21,6 +21,7 @@
 #include "ipc_control.h"
 #include "session.h"
 #include "power.h"
+#include "hotreload.h"
 #include "arena.h"
 
 #include "vgp/log.h"
@@ -45,8 +46,11 @@ typedef struct vgp_server {
     vgp_animation_mgr_t   animations;
     vgp_lockscreen_t      lockscreen;
     vgp_menu_t            desktop_menu;
+    vgp_menu_t            window_menu;
+    vgp_window_t         *menu_target_win;  /* window the menu is for */
     vgp_ipc_control_t     ctl;
     vgp_power_t           power;
+    vgp_hotreload_t       hotreload;
 
     /* Clipboard */
     char                  *clipboard_data;

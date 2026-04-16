@@ -89,6 +89,7 @@ vgp_server_sources = files(
   'src/server/ipc_control.c',
   'src/server/session.c',
   'src/server/power.c',
+  'src/server/hotreload.c',
   'src/server/backend_cpu.c',
   'src/server/arena.c',
   'src/server/pool.c',
@@ -231,6 +232,21 @@ executable('vgp-files',
 # VGP Image Viewer
 # ============================================================
 
+# ============================================================
+# VGP Text Editor
+# ============================================================
+
+executable('vgp-edit',
+  files('src/vgp-edit/main.c'),
+  include_directories : [vgp_inc, vgp_ui_inc],
+  dependencies : [dep_vgp_ui],
+  install : true,
+)
+
+# ============================================================
+# VGP Image Viewer
+# ============================================================
+
 executable('vgp-view',
   files('src/vgp-view/main.c'),
   include_directories : [vgp_inc, nanovg_inc],
@@ -252,5 +268,6 @@ install_data(
   'data/vgp-files.desktop',
   'data/vgp-monitor.desktop',
   'data/vgp-launcher.desktop',
+  'data/vgp-edit.desktop',
   install_dir : get_option('datadir') / 'applications',
 )
