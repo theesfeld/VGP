@@ -123,8 +123,9 @@ void vui_destroy(vui_ctx_t *ctx)
 void vui_begin_frame(vui_ctx_t *ctx)
 {
     memset(ctx->cells, 0, sizeof(ctx->cells));
-    ctx->key_pressed = false;
-    ctx->mouse_clicked = false;
+    /* NOTE: Do NOT clear mouse_clicked or key_pressed here.
+     * They are set during vui_poll() and must survive until
+     * render() reads them. They get cleared in vui_end_frame(). */
 }
 
 void vui_end_frame(vui_ctx_t *ctx)
@@ -132,6 +133,9 @@ void vui_end_frame(vui_ctx_t *ctx)
     vgp_cellgrid_send(ctx->conn, ctx->window_id,
                        (uint16_t)ctx->rows, (uint16_t)ctx->cols,
                        0, 0, 0, 0, ctx->cells);
+    /* Clear per-frame input state after render has consumed it */
+    ctx->key_pressed = false;
+    ctx->mouse_clicked = false;
 }
 
 int vui_poll(vui_ctx_t *ctx, int timeout_ms)
