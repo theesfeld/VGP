@@ -1166,14 +1166,18 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
         render_decoration(b, ctx, &tmp, theme, win == comp->focused);
         render_window_content(b, ctx, win, out_x);
 
-        /* Accessibility: bright focus indicator ring */
+        /* Accessibility: bright focus indicator ring (outline only) */
         if (renderer->focus_indicator && win == comp->focused && win->decorated) {
             float fi_w = 3.0f;
-            b->ops->draw_rounded_rect(b, ctx,
-                (float)tmp.frame_rect.x - fi_w, (float)tmp.frame_rect.y - fi_w,
-                (float)tmp.frame_rect.w + fi_w * 2, (float)tmp.frame_rect.h + fi_w * 2,
-                theme->corner_radius + fi_w,
-                1.0f, 0.8f, 0.0f, 0.9f); /* bright yellow ring */
+            float fx = (float)tmp.frame_rect.x - fi_w;
+            float fy = (float)tmp.frame_rect.y - fi_w;
+            float fw = (float)tmp.frame_rect.w + fi_w * 2;
+            float fh = (float)tmp.frame_rect.h + fi_w * 2;
+            /* Draw 4 border lines instead of a filled rect */
+            b->ops->draw_rect(b, ctx, fx, fy, fw, fi_w, 1.0f, 0.8f, 0.0f, 0.9f);           /* top */
+            b->ops->draw_rect(b, ctx, fx, fy + fh - fi_w, fw, fi_w, 1.0f, 0.8f, 0.0f, 0.9f); /* bottom */
+            b->ops->draw_rect(b, ctx, fx, fy, fi_w, fh, 1.0f, 0.8f, 0.0f, 0.9f);             /* left */
+            b->ops->draw_rect(b, ctx, fx + fw - fi_w, fy, fi_w, fh, 1.0f, 0.8f, 0.0f, 0.9f); /* right */
         }
 
         b->ops->pop_state(b, ctx);
