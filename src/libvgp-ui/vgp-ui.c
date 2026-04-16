@@ -346,3 +346,267 @@ void vui_section(vui_ctx_t *ctx, int row, int col, int width,
     vui_text_bold(ctx, row, col, title, fg, VUI_BG);
     vui_hline(ctx, row, col + len + 1, width - len - 1, VUI_BORDER, VUI_BG);
 }
+
+bool vui_checkbox(vui_ctx_t *ctx, int row, int col, const char *label,
+                   bool *value)
+{
+    int total_w = 4 + (int)strlen(label);
+    bool hover = (ctx->mouse_row == row &&
+                   ctx->mouse_col >= col && ctx->mouse_col < col + total_w);
+    vui_color_t fg = hover ? VUI_WHITE : VUI_GRAY;
+    vui_color_t bg = VUI_BG;
+
+    /* Box */
+    if (*value) {
+        vui_set_cell(ctx, row, col, '[', fg, bg, 0);
+        vui_set_cell(ctx, row, col + 1, 0x2713, VUI_GREEN, bg, VGP_CELL_BOLD); /* checkmark */
+        vui_set_cell(ctx, row, col + 2, ']', fg, bg, 0);
+    } else {
+        vui_set_cell(ctx, row, col, '[', fg, bg, 0);
+        vui_set_cell(ctx, row, col + 1, ' ', fg, bg, 0);
+        vui_set_cell(ctx, row, col + 2, ']', fg, bg, 0);
+    }
+    /* Label */
+    vui_text(ctx, row, col + 4, label, hover ? VUI_WHITE : VUI_GRAY, bg);
+
+    if (hover && ctx->mouse_clicked) {
+        *value = !*value;
+        return true;
+    }
+    return false;
+}
+
+bool vui_dropdown(vui_ctx_t *ctx, int row, int col, int width,
+                   const char **items, int item_count,
+                   int *selected, bool *open)
+{
+    bool changed = false;
+    vui_color_t bg = VUI_SURFACE;
+    bool hover_main = (ctx->mouse_row == row &&
+                        ctx->mouse_col >= col && ctx->mouse_col < col + width);
+
+    /* Render current selection */
+    vui_fill(ctx, row, col, 1, width, bg);
+    const char *current = (*selected >= 0 && *selected < item_count) ?
+                           items[*selected] : "---";
+    char display[128];
+    int max_text = width - 4;
+    snprintf(display, sizeof(display), " %.*s", max_text, current);
+    vui_text(ctx, row, col, display, hover_main ? VUI_WHITE : VUI_GRAY, bg);
+    /* Down arrow indicator */
+    vui_set_cell(ctx, row, col + width - 2, 0x25BC, VUI_ACCENT, bg, 0); /* triangle down */
+
+    /* Toggle open/closed on click */
+    if (hover_main && ctx->mouse_clicked) {
+        *open = !*open;
+    }
+
+    /* Render dropdown list when open */
+    if (*open) {
+        for (int i = 0; i < item_count && row + 1 + i < ctx->rows - 1; i++) {
+            int item_row = row + 1 + i;
+            bool item_hover = (ctx->mouse_row == item_row &&
+                                ctx->mouse_col >= col && ctx->mouse_col < col + width);
+            bool is_selected = (i == *selected);
+            vui_color_t ibg = item_hover ? VUI_ACCENT :
+                               (is_selected ? VUI_SURFACE : (vui_color_t){0x18, 0x18, 0x28});
+            vui_color_t ifg = item_hover ? VUI_WHITE :
+                               (is_selected ? VUI_ACCENT : VUI_GRAY);
+
+            vui_fill(ctx, item_row, col, 1, width, ibg);
+            char item_text[128];
+            snprintf(item_text, sizeof(item_text), " %s%.*s",
+                     is_selected ? "> " : "  ", max_text - 2, items[i]);
+            vui_text(ctx, item_row, col, item_text, ifg, ibg);
+
+            if (item_hover && ctx->mouse_clicked) {
+                *selected = i;
+                *open = false;
+                changed = true;
+            }
+        }
+        /* Click outside closes */
+        if (ctx->mouse_clicked && !hover_main) {
+            bool in_list = (ctx->mouse_row > row &&
+                             ctx->mouse_row <= row + item_count &&
+                             ctx->mouse_col >= col &&
+                             ctx->mouse_col < col + width);
+            if (!in_list) *open = false;
+        }
+    }
+
+    return changed;
+}
+
+bool vui_field_label(vui_ctx_t *ctx, int row, int col, int label_w,
+                      const char *label, const char *value, int value_w)
+{
+    vui_text(ctx, row, col, label, VUI_GRAY, VUI_BG);
+    int val_col = col + label_w;
+    bool hover = (ctx->mouse_row == row &&
+                   ctx->mouse_col >= val_col && ctx->mouse_col < val_col + value_w);
+    vui_color_t vbg = hover ? VUI_SURFACE : VUI_BG;
+    vui_fill(ctx, row, val_col, 1, value_w, vbg);
+    vui_text(ctx, row, val_col, value, hover ? VUI_WHITE : VUI_ACCENT, vbg);
+    return hover && ctx->mouse_clicked;
+}
+
+void vui_tooltip(vui_ctx_t *ctx, int hover_row, int hover_col, int hover_w,
+                  const char *text)
+{
+    bool hovering = (ctx->mouse_row == hover_row &&
+                      ctx->mouse_col >= hover_col &&
+                      ctx->mouse_col < hover_col + hover_w);
+    if (!hovering) return;
+
+    /* Show tooltip below the hover area */
+    int tip_row = hover_row + 1;
+    int tip_col = hover_col;
+    int tip_len = (int)strlen(text) + 2;
+    if (tip_col + tip_len > ctx->cols) tip_col = ctx->cols - tip_len;
+    if (tip_col < 0) tip_col = 0;
+    if (tip_row >= ctx->rows - 1) tip_row = hover_row - 1;
+
+    vui_color_t tip_bg = (vui_color_t){0x30, 0x30, 0x50};
+    vui_fill(ctx, tip_row, tip_col, 1, tip_len, tip_bg);
+    char buf[256];
+    snprintf(buf, sizeof(buf), " %s ", text);
+    vui_text(ctx, tip_row, tip_col, buf, VUI_WHITE, tip_bg);
+}
+
+bool vui_slider(vui_ctx_t *ctx, int row, int col, int width,
+                 float *value, float min, float max, const char *fmt)
+{
+    bool hover = (ctx->mouse_row == row &&
+                   ctx->mouse_col >= col && ctx->mouse_col < col + width);
+    float range = max - min;
+    if (range <= 0) range = 1.0f;
+    float norm = (*value - min) / range;
+    if (norm < 0) norm = 0;
+    if (norm > 1) norm = 1;
+
+    int bar_w = width - 8; /* leave room for value text */
+    int filled = (int)(norm * (float)bar_w);
+
+    /* Track */
+    for (int i = 0; i < bar_w; i++) {
+        bool in_fill = (i <= filled);
+        vui_set_cell(ctx, row, col + i,
+                      in_fill ? 0x2588 : 0x2591, /* filled or light shade */
+                      in_fill ? VUI_ACCENT : VUI_GRAY, VUI_BG, 0);
+    }
+
+    /* Value text */
+    char vbuf[16];
+    snprintf(vbuf, sizeof(vbuf), fmt ? fmt : "%.1f", *value);
+    vui_text(ctx, row, col + bar_w + 1, vbuf,
+              hover ? VUI_WHITE : VUI_GRAY, VUI_BG);
+
+    /* Click to set value */
+    if (hover && ctx->mouse_clicked && ctx->mouse_col < col + bar_w) {
+        float click_pos = (float)(ctx->mouse_col - col) / (float)bar_w;
+        if (click_pos < 0) click_pos = 0;
+        if (click_pos > 1) click_pos = 1;
+        *value = min + click_pos * range;
+        return true;
+    }
+    return false;
+}
+
+bool vui_radio(vui_ctx_t *ctx, int row, int col,
+                const char **labels, int count, int *selected)
+{
+    bool changed = false;
+    int x = col;
+    for (int i = 0; i < count; i++) {
+        int label_len = (int)strlen(labels[i]);
+        int item_w = 4 + label_len;
+        bool hover = (ctx->mouse_row == row &&
+                       ctx->mouse_col >= x && ctx->mouse_col < x + item_w);
+        bool is_sel = (i == *selected);
+
+        /* Radio bullet */
+        vui_set_cell(ctx, row, x, '(', hover ? VUI_WHITE : VUI_GRAY, VUI_BG, 0);
+        vui_set_cell(ctx, row, x + 1, is_sel ? 0x25CF : ' ',  /* filled circle or space */
+                      is_sel ? VUI_ACCENT : VUI_GRAY, VUI_BG, 0);
+        vui_set_cell(ctx, row, x + 2, ')', hover ? VUI_WHITE : VUI_GRAY, VUI_BG, 0);
+        vui_text(ctx, row, x + 4, labels[i],
+                  hover ? VUI_WHITE : (is_sel ? VUI_ACCENT : VUI_GRAY), VUI_BG);
+
+        if (hover && ctx->mouse_clicked && !is_sel) {
+            *selected = i;
+            changed = true;
+        }
+        x += item_w + 2;
+    }
+    return changed;
+}
+
+bool vui_keybind_input(vui_ctx_t *ctx, int row, int col, int width,
+                        char *buffer, int buf_size, bool *capturing)
+{
+    bool hover = (ctx->mouse_row == row &&
+                   ctx->mouse_col >= col && ctx->mouse_col < col + width);
+    vui_color_t bg = *capturing ? (vui_color_t){0x40, 0x20, 0x20} : VUI_SURFACE;
+    vui_color_t fg = *capturing ? VUI_YELLOW : (hover ? VUI_WHITE : VUI_GRAY);
+
+    vui_fill(ctx, row, col, 1, width, bg);
+    if (*capturing) {
+        vui_text(ctx, row, col + 1, "Press key combo...", VUI_YELLOW, bg);
+    } else {
+        vui_text(ctx, row, col + 1, buffer, fg, bg);
+    }
+
+    /* Click to start capturing */
+    if (hover && ctx->mouse_clicked && !*capturing) {
+        *capturing = true;
+        return false;
+    }
+
+    /* Capture next keypress */
+    if (*capturing && ctx->key_pressed) {
+        /* Build modifier string */
+        char combo[64] = "";
+        if (ctx->last_mods & 0x40) strcat(combo, "Super+");  /* Mod4 */
+        if (ctx->last_mods & 0x04) strcat(combo, "Ctrl+");
+        if (ctx->last_mods & 0x08) strcat(combo, "Alt+");
+        if (ctx->last_mods & 0x01) strcat(combo, "Shift+");
+
+        /* Escape cancels */
+        if (ctx->last_keysym == 0xFF1B) {
+            *capturing = false;
+            return false;
+        }
+
+        /* Skip lone modifier presses */
+        if (ctx->last_keysym >= 0xFFE1 && ctx->last_keysym <= 0xFFEE)
+            return false;
+
+        /* Append key name (simplified) */
+        char key_name[32] = "?";
+        if (ctx->last_keysym == 0xFF0D) snprintf(key_name, sizeof(key_name), "Return");
+        else if (ctx->last_keysym == 0xFF09) snprintf(key_name, sizeof(key_name), "Tab");
+        else if (ctx->last_keysym == 0xFF08) snprintf(key_name, sizeof(key_name), "BackSpace");
+        else if (ctx->last_keysym == 0xFFFF) snprintf(key_name, sizeof(key_name), "Delete");
+        else if (ctx->last_keysym == 0xFF50) snprintf(key_name, sizeof(key_name), "Home");
+        else if (ctx->last_keysym == 0xFF57) snprintf(key_name, sizeof(key_name), "End");
+        else if (ctx->last_keysym == 0xFF61) snprintf(key_name, sizeof(key_name), "Print");
+        else if (ctx->last_keysym >= 0xFF51 && ctx->last_keysym <= 0xFF54) {
+            const char *arrows[] = {"Left", "Up", "Right", "Down"};
+            snprintf(key_name, sizeof(key_name), "%s", arrows[ctx->last_keysym - 0xFF51]);
+        } else if (ctx->last_keysym >= 0x20 && ctx->last_keysym < 0x7F) {
+            key_name[0] = (char)ctx->last_keysym;
+            if (key_name[0] >= 'a' && key_name[0] <= 'z')
+                key_name[0] -= 32; /* uppercase */
+            key_name[1] = '\0';
+        } else if (ctx->last_keysym >= 0xFFBE && ctx->last_keysym <= 0xFFC9) {
+            snprintf(key_name, sizeof(key_name), "F%d", ctx->last_keysym - 0xFFBE + 1);
+        }
+
+        strncat(combo, key_name, sizeof(combo) - strlen(combo) - 1);
+        snprintf(buffer, (size_t)buf_size, "%s", combo);
+        *capturing = false;
+        return true;
+    }
+    return false;
+}

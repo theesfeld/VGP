@@ -514,6 +514,32 @@ void vgp_server_handle_pointer_motion(vgp_server_t *server, double dx, double dy
         }
     }
 
+    /* Send mouse move to focused window's client if cursor is over content */
+    vgp_window_t *focused = server->compositor.focused;
+    if (focused && focused->client_fd >= 0 && !grab->active) {
+        float mx = cursor->x;
+        float my = cursor->y;
+        vgp_rect_t *cr = &focused->content_rect;
+        if (mx >= (float)cr->x && mx < (float)(cr->x + cr->w) &&
+            my >= (float)cr->y && my < (float)(cr->y + cr->h)) {
+            vgp_msg_mouse_move_event_t msg = {
+                .header = {
+                    .magic = VGP_PROTOCOL_MAGIC,
+                    .type = VGP_MSG_MOUSE_MOVE,
+                    .length = sizeof(msg),
+                    .window_id = focused->id,
+                },
+                .x = mx - (float)cr->x,
+                .y = my - (float)cr->y,
+                .modifiers = vgp_keyboard_get_modifiers(&server->keyboard),
+            };
+            vgp_ipc_client_t *client =
+                vgp_ipc_find_client(&server->ipc, focused->client_fd);
+            if (client)
+                vgp_ipc_send(client, &msg, sizeof(msg));
+        }
+    }
+
     vgp_renderer_schedule_frame(&server->renderer);
 }
 

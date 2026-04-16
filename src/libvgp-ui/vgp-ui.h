@@ -123,4 +123,38 @@ void vui_progress(vui_ctx_t *ctx, int row, int col, int width,
 void vui_section(vui_ctx_t *ctx, int row, int col, int width,
                   const char *title, vui_color_t fg);
 
+/* Checkbox: renders [x] or [ ] with label, toggles *value on click, returns true if changed */
+bool vui_checkbox(vui_ctx_t *ctx, int row, int col, const char *label,
+                   bool *value);
+
+/* Dropdown: renders current selection, opens list on click.
+ * *selected is the index of the currently selected item.
+ * *open tracks whether the dropdown list is visible.
+ * Returns true if selection changed. */
+bool vui_dropdown(vui_ctx_t *ctx, int row, int col, int width,
+                   const char **items, int item_count,
+                   int *selected, bool *open);
+
+/* Labeled value: "Label:  value" with hover highlight for the value area.
+ * Returns true if clicked (for inline editing). */
+bool vui_field_label(vui_ctx_t *ctx, int row, int col, int label_w,
+                      const char *label, const char *value, int value_w);
+
+/* Tooltip: shows help text when hovering over the given area */
+void vui_tooltip(vui_ctx_t *ctx, int hover_row, int hover_col, int hover_w,
+                  const char *text);
+
+/* Slider: horizontal bar from min to max, adjustable via click.
+ * Returns true if value changed. */
+bool vui_slider(vui_ctx_t *ctx, int row, int col, int width,
+                 float *value, float min, float max, const char *fmt);
+
+/* Radio button group: renders ( ) options, returns true if changed */
+bool vui_radio(vui_ctx_t *ctx, int row, int col,
+                const char **labels, int count, int *selected);
+
+/* Keybind capture field: shows current keybind, captures next keypress on focus */
+bool vui_keybind_input(vui_ctx_t *ctx, int row, int col, int width,
+                        char *buffer, int buf_size, bool *capturing);
+
 #endif /* VGP_UI_H */
