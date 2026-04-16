@@ -37,7 +37,7 @@ jobs:
           echo "Build successful"
           ls -la build/vgp build/vgp-term build/vgp-launcher \
                  build/vgp-settings build/vgp-files build/vgp-monitor build/vgp-view
-          DESTDIR=pkg meson install -C build
+          DESTDIR="$PWD/pkg" meson install -C build
           tar czf "vgp-${TAG_NAME}-x86_64.tar.gz" -C pkg .
 
       - name: Upload artifact
