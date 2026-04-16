@@ -94,6 +94,7 @@ vgp_server_sources = files(
   'src/server/backend_cpu.c',
   'src/server/arena.c',
   'src/server/pool.c',
+  'src/server/panel.c',
 )
 
 # Add GPU backend sources if available

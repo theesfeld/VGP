@@ -23,6 +23,7 @@
 #include "power.h"
 #include "hotreload.h"
 #include "calendar.h"
+#include "panel.h"
 #include "arena.h"
 
 #include "vgp/log.h"

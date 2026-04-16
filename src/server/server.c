@@ -601,67 +601,15 @@ void vgp_server_handle_pointer_button(vgp_server_t *server,
             int32_t cy = (int32_t)cursor->y;
 
             /* Check if click is in the panel area */
-            float bar_h = server->config.theme.statusbar_height;
             int active_out = vgp_compositor_output_at_cursor(&server->compositor);
             vgp_output_info_t *aout = &server->compositor.outputs[active_out];
-            float panel_y = (float)aout->height - bar_h;
             float local_x = cursor->x - (float)aout->x;
             float local_y = cursor->y - (float)aout->y;
 
-            if (local_y >= panel_y && local_y < (float)aout->height) {
-                /* Click is in the panel */
-                float pad = 6.0f;
-                float ws_btn_w = 22.0f;
-                float ws_area_end = pad + 9.0f * (ws_btn_w + 2.0f);
-
-                if (local_x < ws_area_end) {
-                    /* Workspace indicator click */
-                    int ws_idx = (int)((local_x - pad) / (ws_btn_w + 2.0f));
-                    if (ws_idx >= 0 && ws_idx < 9) {
-                        aout->workspace = ws_idx;
-                        VGP_LOG_INFO(TAG, "panel: switched output %d to workspace %d",
-                                     active_out, ws_idx);
-                        vgp_renderer_schedule_frame(&server->renderer);
-                    }
-                } else if (local_x >= (float)aout->width - 120.0f) {
-                    /* Clock area -- toggle calendar */
-                    vgp_calendar_toggle(&server->calendar,
-                                         (float)aout->width - 10.0f,
-                                         (float)aout->height - bar_h - 210.0f);
-                    vgp_renderer_schedule_frame(&server->renderer);
-                } else {
-                    /* Taskbar area: find which window entry was clicked */
-                    float taskbar_start = ws_area_end + pad * 3;
-                    float taskbar_end = (float)aout->width - 120.0f;
-                    float taskbar_w = taskbar_end - taskbar_start;
-                    int ws = aout->workspace;
-
-                    /* Count windows on this workspace */
-                    int win_count = 0;
-                    for (int i = 0; i < server->compositor.window_count; i++) {
-                        vgp_window_t *w = server->compositor.z_order[i];
-                        if (w->visible && w->workspace == ws && w->decorated)
-                            win_count++;
-                    }
-
-                    if (win_count > 0 && local_x >= taskbar_start && local_x < taskbar_end) {
-                        float entry_w = taskbar_w / (float)win_count;
-                        if (entry_w > 250.0f) entry_w = 250.0f;
-                        int clicked_idx = (int)((local_x - taskbar_start) / entry_w);
-                        int found = 0;
-                        for (int i = 0; i < server->compositor.window_count; i++) {
-                            vgp_window_t *w = server->compositor.z_order[i];
-                            if (!w->visible || w->workspace != ws || !w->decorated)
-                                continue;
-                            if (found == clicked_idx) {
-                                vgp_compositor_focus_window(&server->compositor, w);
-                                vgp_renderer_schedule_frame(&server->renderer);
-                                break;
-                            }
-                            found++;
-                        }
-                    }
-                }
+            if (vgp_panel_click(&server->config.panel, &server->config.theme,
+                                 local_x, local_y,
+                                 aout->width, aout->height,
+                                 server, active_out)) {
                 goto button_done;
             }
 
