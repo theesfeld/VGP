@@ -18,6 +18,7 @@ typedef struct vgp_renderer {
     int                   shader_background;
     int                   shader_titlebar;
     int                   shader_panel;
+    int                   shader_overlay;   /* post-process overlay (rain, etc.) */
 
     /* Accessibility */
     bool                  focus_indicator;  /* draw bright ring around focused window */

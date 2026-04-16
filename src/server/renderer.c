@@ -696,6 +696,7 @@ int vgp_renderer_init(vgp_renderer_t *renderer, vgp_drm_backend_t *drm,
     renderer->shader_background = -1;
     renderer->shader_titlebar = -1;
     renderer->shader_panel = -1;
+    renderer->shader_overlay = -1;
 
     /* Load shader effects from theme */
 #ifdef VGP_HAS_GPU_BACKEND
@@ -739,12 +740,20 @@ int vgp_renderer_init(vgp_renderer_t *renderer, vgp_drm_backend_t *drm,
                          "%s/.config/vgp/shaders/panel.frag", home);
                 renderer->shader_panel = vgp_shader_load(smgr, path_buf);
             }
+
+            /* Overlay shader (rain, post-effects) */
+            if (home) {
+                snprintf(path_buf, sizeof(path_buf),
+                         "%s/.config/vgp/shaders/rain.frag", home);
+                renderer->shader_overlay = vgp_shader_load(smgr, path_buf);
+            }
         }
     }
 #endif
 
-    VGP_LOG_INFO(TAG, "renderer initialized (bg_shader=%d, panel_shader=%d)",
-                 renderer->shader_background, renderer->shader_panel);
+    VGP_LOG_INFO(TAG, "renderer initialized (bg=%d, panel=%d, overlay=%d)",
+                 renderer->shader_background, renderer->shader_panel,
+                 renderer->shader_overlay);
     return 0;
 }
 
@@ -976,6 +985,41 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
     /* Layer 2: Panel */
     vgp_panel_render(b, ctx, theme, panel_cfg,
                       output->width, output->height, workspace, comp);
+
+    /* Layer 2b: Overlay shader (rain, post-effects) */
+#ifdef VGP_HAS_GPU_BACKEND
+    if (renderer->shader_overlay >= 0 && b->type == VGP_BACKEND_GPU) {
+        vgp_gpu_state_t *gs = b->priv;
+        vgp_shader_mgr_t *smgr = gs->shader_mgr;
+        if (smgr) {
+            /* Collect focused window rect for the shader */
+            vgp_shader_windows_t wins = {0};
+            /* First window = focused window */
+            if (comp->focused && comp->focused->visible &&
+                comp->focused->workspace == workspace) {
+                vgp_window_t *fw = comp->focused;
+                wins.rects[0] = (float)(fw->frame_rect.x - out_x);
+                wins.rects[1] = (float)fw->frame_rect.y;
+                wins.rects[2] = (float)fw->frame_rect.w;
+                wins.rects[3] = (float)fw->frame_rect.h;
+                wins.count = 1;
+            }
+
+            nvgEndFrame(ctx);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            vgp_shader_render(smgr, renderer->shader_overlay,
+                               0, 0, (float)output->width, (float)output->height,
+                               (float)output->width, (float)output->height,
+                               theme->background.r, theme->background.g,
+                               theme->background.b, theme->background.a,
+                               theme->border_active.r, theme->border_active.g,
+                               theme->border_active.b, theme->border_active.a,
+                               local_mouse_x, local_mouse_y, &wins);
+            nvgBeginFrame(ctx, (float)output->width, (float)output->height, 1.0f);
+        }
+    }
+#endif
 
     /* Layer 3: Cursor (only on the output where the cursor is) */
     {

@@ -176,12 +176,12 @@ static void sample(void)
 static vgfx_color_t HG, HD, HB, HW, HR, HBG;
 
 static void init_colors(void) {
-    HG  = vgfx_rgba(0.0f, 0.85f, 0.0f, 0.9f);  /* green */
-    HD  = vgfx_rgba(0.0f, 0.35f, 0.0f, 0.5f);  /* dim green */
-    HB  = vgfx_rgba(0.0f, 1.0f, 0.0f, 1.0f);   /* bright green */
-    HW  = vgfx_rgba(1.0f, 0.85f, 0.0f, 1.0f);  /* warning yellow */
-    HR  = vgfx_rgba(1.0f, 0.2f, 0.2f, 1.0f);   /* red/critical */
-    HBG = vgfx_rgba(0.0f, 0.02f, 0.0f, 1.0f);  /* near-black */
+    HG  = vgfx_rgba(0.93f, 0.93f, 0.93f, 0.9f); /* white (primary) */
+    HD  = vgfx_rgba(0.4f, 0.4f, 0.4f, 0.5f);    /* dim gray */
+    HB  = vgfx_rgba(1.0f, 1.0f, 1.0f, 1.0f);    /* bright white */
+    HW  = vgfx_rgba(1.0f, 0.84f, 0.0f, 1.0f);   /* yellow highlight */
+    HR  = vgfx_rgba(1.0f, 0.2f, 0.2f, 1.0f);    /* red/critical */
+    HBG = vgfx_rgba(0.0f, 0.0f, 0.0f, 1.0f);    /* pure black */
 }
 
 static vgfx_color_t usage_color(float v) {
