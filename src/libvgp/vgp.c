@@ -179,6 +179,12 @@ static void process_messages(vgp_connection_t *conn)
             return;
         }
 
+        /* Reject invalid length */
+        if (hdr->length < sizeof(vgp_msg_header_t) || hdr->length > 8 * 1024 * 1024) {
+            conn->recv_len = 0;
+            return;
+        }
+
         if (conn->recv_len < hdr->length)
             break;
 
@@ -187,8 +193,10 @@ static void process_messages(vgp_connection_t *conn)
             vgp_event_t ev = { .window_id = hdr->window_id };
 
             switch (hdr->type) {
+            #define CLIENT_CHECK(T) if (hdr->length < sizeof(T)) break
             case VGP_MSG_KEY_PRESS:
             case VGP_MSG_KEY_RELEASE: {
+                CLIENT_CHECK(vgp_msg_key_event_t);
                 vgp_msg_key_event_t *key = (vgp_msg_key_event_t *)hdr;
                 ev.type = hdr->type == VGP_MSG_KEY_PRESS ?
                     VGP_EVENT_KEY_PRESS : VGP_EVENT_KEY_RELEASE;
@@ -201,6 +209,7 @@ static void process_messages(vgp_connection_t *conn)
                 break;
             }
             case VGP_MSG_MOUSE_MOVE: {
+                CLIENT_CHECK(vgp_msg_mouse_move_event_t);
                 vgp_msg_mouse_move_event_t *mm = (vgp_msg_mouse_move_event_t *)hdr;
                 ev.type = VGP_EVENT_MOUSE_MOVE;
                 ev.mouse_move.x = mm->x;
@@ -210,6 +219,7 @@ static void process_messages(vgp_connection_t *conn)
                 break;
             }
             case VGP_MSG_MOUSE_BUTTON: {
+                CLIENT_CHECK(vgp_msg_mouse_button_event_t);
                 vgp_msg_mouse_button_event_t *mb = (vgp_msg_mouse_button_event_t *)hdr;
                 ev.type = VGP_EVENT_MOUSE_BUTTON;
                 ev.mouse_button.x = mb->x;
@@ -221,6 +231,7 @@ static void process_messages(vgp_connection_t *conn)
                 break;
             }
             case VGP_MSG_MOUSE_SCROLL: {
+                CLIENT_CHECK(vgp_msg_mouse_scroll_event_t);
                 vgp_msg_mouse_scroll_event_t *ms = (vgp_msg_mouse_scroll_event_t *)hdr;
                 ev.type = VGP_EVENT_MOUSE_SCROLL;
                 ev.scroll.dx = ms->dx;
@@ -238,6 +249,7 @@ static void process_messages(vgp_connection_t *conn)
                 conn->event_cb(conn, &ev, conn->event_cb_data);
                 break;
             case VGP_MSG_WINDOW_CONFIGURE: {
+                CLIENT_CHECK(vgp_msg_window_configure_t);
                 vgp_msg_window_configure_t *cfg = (vgp_msg_window_configure_t *)hdr;
                 ev.type = VGP_EVENT_CONFIGURE;
                 ev.configure.x = cfg->x;
@@ -252,6 +264,7 @@ static void process_messages(vgp_connection_t *conn)
                 conn->event_cb(conn, &ev, conn->event_cb_data);
                 break;
             case VGP_MSG_THEME_INFO: {
+                CLIENT_CHECK(vgp_msg_theme_info_t);
                 vgp_msg_theme_info_t *ti = (vgp_msg_theme_info_t *)hdr;
                 ev.type = VGP_EVENT_THEME_INFO;
                 memcpy(ev.theme.colors, ti->colors, sizeof(ti->colors));

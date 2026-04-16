@@ -873,10 +873,29 @@ void vgp_server_handle_pointer_scroll(vgp_server_t *server,
  * IPC message handler
  * ============================================================ */
 
+/* Validate message has at least `min_size` bytes */
+#define MSG_CHECK_SIZE(min_size) do { \
+    if (hdr->length < (min_size)) { \
+        VGP_LOG_WARN(TAG, "msg type 0x%04x too short: %u < %zu", \
+                     hdr->type, hdr->length, (size_t)(min_size)); \
+        return; \
+    } \
+} while(0)
+
+/* Validate window_id and get window pointer */
+#define MSG_GET_WINDOW(win_var) \
+    uint32_t win_id__ = hdr->window_id; \
+    if (win_id__ == 0 || win_id__ > VGP_MAX_WINDOWS) return; \
+    vgp_window_t *win_var = &server->compositor.windows[win_id__ - 1]; \
+    if (!win_var->used) return;
+
 void vgp_server_handle_message(vgp_server_t *server,
                                 struct vgp_ipc_client *client,
                                 vgp_msg_header_t *hdr)
 {
+    /* Global validation: magic already checked by ipc.c,
+     * length already validated >= sizeof(header) */
+
     switch (hdr->type) {
     case VGP_MSG_CONNECT: {
         uint32_t w = 1920, h = 1080;
@@ -904,10 +923,12 @@ void vgp_server_handle_message(vgp_server_t *server,
     }
 
     case VGP_MSG_WINDOW_CREATE: {
+        MSG_CHECK_SIZE(sizeof(vgp_msg_window_create_t));
         vgp_msg_window_create_t *msg = (vgp_msg_window_create_t *)hdr;
 
         char title[VGP_MAX_TITLE_LEN] = "Untitled";
-        if (msg->title_len > 0 && msg->title_len < VGP_MAX_TITLE_LEN) {
+        if (msg->title_len > 0 && msg->title_len < VGP_MAX_TITLE_LEN &&
+            hdr->length >= sizeof(vgp_msg_window_create_t) + msg->title_len) {
             char *title_data = (char *)(msg + 1);
             memcpy(title, title_data, msg->title_len);
             title[msg->title_len] = '\0';
@@ -1000,6 +1021,7 @@ void vgp_server_handle_message(vgp_server_t *server,
     }
 
     case VGP_MSG_WINDOW_SET_TITLE: {
+        MSG_CHECK_SIZE(sizeof(vgp_msg_header_t) + 1);
         uint32_t win_id = hdr->window_id;
         if (win_id > 0 && win_id <= VGP_MAX_WINDOWS) {
             vgp_window_t *win = &server->compositor.windows[win_id - 1];
@@ -1017,6 +1039,7 @@ void vgp_server_handle_message(vgp_server_t *server,
     }
 
     case VGP_MSG_SURFACE_ATTACH: {
+        MSG_CHECK_SIZE(sizeof(vgp_msg_surface_attach_t));
         vgp_msg_surface_attach_t *msg = (vgp_msg_surface_attach_t *)hdr;
         uint32_t win_id = hdr->window_id;
         if (win_id > 0 && win_id <= VGP_MAX_WINDOWS) {
@@ -1025,6 +1048,10 @@ void vgp_server_handle_message(vgp_server_t *server,
                 uint32_t w = msg->width;
                 uint32_t h = msg->height;
                 uint32_t stride = msg->stride;
+                /* Validate pixel data fits in message */
+                size_t pixel_size = (size_t)stride * h;
+                if (w == 0 || h == 0 || w > 8192 || h > 8192 || stride > 8192 * 4 ||
+                    hdr->length < sizeof(vgp_msg_surface_attach_t) + pixel_size) break;
                 uint8_t *pixel_data = (uint8_t *)(msg + 1);
 
                 VGP_LOG_DEBUG(TAG, "surface_attach: win=%u %ux%u stride=%u",
@@ -1055,7 +1082,7 @@ void vgp_server_handle_message(vgp_server_t *server,
     }
 
     case VGP_MSG_CLIPBOARD_SET: {
-        /* Client sets clipboard content */
+        MSG_CHECK_SIZE(sizeof(vgp_msg_header_t));
         size_t data_len = hdr->length - sizeof(vgp_msg_header_t);
         if (data_len > 0 && data_len < 1024 * 1024) { /* 1MB max */
             free(server->clipboard_data);
@@ -1091,7 +1118,7 @@ void vgp_server_handle_message(vgp_server_t *server,
     }
 
     case VGP_MSG_OPEN_URL: {
-        /* Client requests opening a URL */
+        MSG_CHECK_SIZE(sizeof(vgp_msg_header_t));
         size_t url_len = hdr->length - sizeof(vgp_msg_header_t);
         if (url_len > 0 && url_len < 4096) {
             char url[4096];
@@ -1114,6 +1141,7 @@ void vgp_server_handle_message(vgp_server_t *server,
     }
 
     case VGP_MSG_SET_FONT_SIZE: {
+        MSG_CHECK_SIZE(sizeof(vgp_msg_set_font_size_t));
         vgp_msg_set_font_size_t *msg = (vgp_msg_set_font_size_t *)hdr;
         uint32_t win_id = hdr->window_id;
         if (win_id > 0 && win_id <= VGP_MAX_WINDOWS) {
@@ -1128,6 +1156,7 @@ void vgp_server_handle_message(vgp_server_t *server,
     }
 
     case VGP_MSG_CELLGRID: {
+        MSG_CHECK_SIZE(sizeof(vgp_msg_cellgrid_t));
         vgp_msg_cellgrid_t *msg = (vgp_msg_cellgrid_t *)hdr;
         uint32_t win_id = hdr->window_id;
         if (win_id > 0 && win_id <= VGP_MAX_WINDOWS) {
@@ -1135,7 +1164,10 @@ void vgp_server_handle_message(vgp_server_t *server,
             if (win->used) {
                 uint16_t rows = msg->rows;
                 uint16_t cols = msg->cols;
+                /* Validate dimensions + overflow check */
+                if (rows == 0 || cols == 0 || rows > 500 || cols > 500) break;
                 size_t cell_size = (size_t)rows * cols * sizeof(vgp_cell_t);
+                if (hdr->length < sizeof(vgp_msg_cellgrid_t) + cell_size) break;
                 void *cell_data = (uint8_t *)(msg + 1);
 
                 /* Allocate or reallocate cell grid */
@@ -1162,12 +1194,16 @@ void vgp_server_handle_message(vgp_server_t *server,
     }
 
     case VGP_MSG_DRAW_COMMANDS: {
+        MSG_CHECK_SIZE(sizeof(vgp_msg_draw_commands_t));
         vgp_msg_draw_commands_t *msg = (vgp_msg_draw_commands_t *)hdr;
         uint32_t win_id = hdr->window_id;
         if (win_id > 0 && win_id <= VGP_MAX_WINDOWS) {
             vgp_window_t *win = &server->compositor.windows[win_id - 1];
             if (win->used) {
                 uint32_t cmd_bytes = msg->cmd_bytes;
+                /* Validate command data fits in message */
+                if (hdr->length < sizeof(vgp_msg_draw_commands_t) + cmd_bytes) break;
+                if (cmd_bytes > 1024 * 1024) break; /* 1MB max */
                 void *cmd_data = (uint8_t *)(msg + 1);
 
                 /* Reallocate if buffer is too small */

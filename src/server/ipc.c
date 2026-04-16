@@ -213,6 +213,15 @@ void vgp_ipc_client_dispatch(vgp_ipc_client_t *client,
             return;
         }
 
+        /* Reject messages with invalid length */
+        if (hdr->length < sizeof(vgp_msg_header_t) ||
+            hdr->length > VGP_IPC_MAX_BUF_SIZE) {
+            VGP_LOG_WARN(TAG, "client %u invalid msg length %u",
+                         client->client_id, hdr->length);
+            client->recv_len = 0;
+            return;
+        }
+
         /* Grow buffer if needed for large messages (e.g. surface_attach) */
         if (hdr->length > client->recv_cap) {
             if (ensure_recv_capacity(client, hdr->length) < 0) {
