@@ -105,10 +105,14 @@ vgp_window_t *vgp_compositor_create_window(vgp_compositor_t *comp,
     int out_idx = vgp_compositor_output_at_cursor(comp);
     win->workspace = comp->outputs[out_idx].workspace;
 
-    /* Position relative to the output's coordinate space */
+    /* Position relative to the output's coordinate space.
+     * Account for panel position (top or bottom). */
     vgp_output_info_t *out = &comp->outputs[out_idx];
+    float bar_h = theme->statusbar_height;
+    int32_t usable_y = comp->panel_top ? (int32_t)bar_h : 0;
+    int32_t usable_h = (int32_t)out->height - (int32_t)bar_h;
     if (x < 0) x = out->x + (int32_t)(out->width / 4);
-    if (y < 0) y = out->y + (int32_t)(out->height / 4);
+    if (y < 0) y = usable_y + usable_h / 4;
 
     win->frame_rect = vgp_window_frame_rect(x, y, w, h, theme);
     win->content_rect = vgp_window_content_rect(&win->frame_rect, theme);

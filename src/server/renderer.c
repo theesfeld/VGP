@@ -96,60 +96,80 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
     float x = (float)f->x, y = (float)f->y;
     float w = (float)f->w, h = (float)f->h;
     float th = theme->titlebar_height;
-    float bw = theme->border_width;
-    float cr = theme->corner_radius;
+    float cr = theme->corner_radius > 0 ? theme->corner_radius : 10.0f;
 
-    /* Border */
-    const vgp_color_t *bc = focused ? &theme->border_active : &theme->border_inactive;
+    float glass_alpha = focused ? 0.12f : 0.08f;
+    float edge_alpha = focused ? 0.25f : 0.12f;
+
+    /* === Plexiglass pane ===
+     * Semi-transparent rounded rectangle -- the "glass" itself.
+     * Content shows through. No solid fill. */
     b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
-                               bc->r, bc->g, bc->b, bc->a);
+                               0.5f, 0.5f, 0.55f, glass_alpha);
 
-    /* Title bar fill (slightly inset) */
-    const vgp_color_t *tb = focused ? &theme->titlebar_active : &theme->titlebar_inactive;
-    b->ops->draw_rounded_rect(b, ctx, x + bw, y + bw,
-                               w - bw * 2, th - bw, cr > bw ? cr - bw : 1,
-                               tb->r, tb->g, tb->b, tb->a);
+    /* Glass edge highlight (top-left light source) */
+    b->ops->draw_rounded_rect(b, ctx, x, y, w, 1.5f, cr,
+                               1.0f, 1.0f, 1.0f, edge_alpha);
+    b->ops->draw_rounded_rect(b, ctx, x, y, 1.5f, h, cr,
+                               1.0f, 1.0f, 1.0f, edge_alpha * 0.5f);
 
-    /* Content area background */
+    /* Glass edge shadow (bottom-right) */
+    b->ops->draw_rounded_rect(b, ctx, x, y + h - 1.5f, w, 1.5f, cr,
+                               0.0f, 0.0f, 0.0f, edge_alpha);
+    b->ops->draw_rounded_rect(b, ctx, x + w - 1.5f, y, 1.5f, h, cr,
+                               0.0f, 0.0f, 0.0f, edge_alpha * 0.5f);
+
+    /* Content area: very subtle dark tint for readability */
     const vgp_color_t *cb = &theme->content_bg;
-    b->ops->draw_rect(b, ctx, x + bw, y + th,
-                       w - bw * 2, h - th - bw,
-                       cb->r, cb->g, cb->b, cb->a);
+    b->ops->draw_rounded_rect(b, ctx, x + 2, y + th, w - 4, h - th - 2, cr > 2 ? cr - 2 : 1,
+                               cb->r, cb->g, cb->b, focused ? 0.85f : 0.75f);
 
-    /* Title text */
+    /* === Etched title text ===
+     * "Etched into glass" = dark shadow below, bright text on top.
+     * Like a manufacturer mark pressed into the surface. */
     if (win->title[0]) {
+        float text_x = x + 12.0f;
+        float text_y = y + th / 2.0f + theme->title_font_size / 3.0f;
+        float fs = theme->title_font_size;
+
+        /* Shadow (etched groove -- darker, offset down-right) */
+        b->ops->draw_text(b, ctx, win->title, -1, text_x + 1, text_y + 1, fs,
+                           0.0f, 0.0f, 0.0f, focused ? 0.5f : 0.3f);
+        /* Highlight (etched ridge -- brighter, offset up-left) */
+        b->ops->draw_text(b, ctx, win->title, -1, text_x - 0.5f, text_y - 0.5f, fs,
+                           1.0f, 1.0f, 1.0f, focused ? 0.15f : 0.08f);
+        /* Main text */
         const vgp_color_t *tc = focused ? &theme->title_text_active
                                         : &theme->title_text_inactive;
-        float text_x = x + bw + 10.0f;
-        float text_y = y + th / 2.0f + theme->title_font_size / 3.0f;
-        b->ops->draw_text(b, ctx, win->title, -1, text_x, text_y,
-                           theme->title_font_size,
-                           tc->r, tc->g, tc->b, tc->a);
+        b->ops->draw_text(b, ctx, win->title, -1, text_x, text_y, fs,
+                           tc->r, tc->g, tc->b, focused ? 0.7f : 0.4f);
     }
 
-    /* Buttons */
-    float btn_r = theme->button_radius;
-    float btn_spacing = theme->button_spacing;
-    float btn_margin = theme->button_margin_right;
+    /* === Window control dots (small, subtle, etched into glass) === */
+    float btn_r = 4.0f;
+    float btn_spacing = 10.0f;
     float btn_cy = y + th / 2.0f;
 
     /* Close */
-    float close_cx = x + w - btn_margin - btn_r;
+    float close_cx = x + w - 16 - btn_r;
+    b->ops->draw_circle(b, ctx, close_cx + 0.5f, btn_cy + 0.5f, btn_r, 0, 0, 0, 0.3f);
     b->ops->draw_circle(b, ctx, close_cx, btn_cy, btn_r,
                          theme->close_btn.r, theme->close_btn.g,
-                         theme->close_btn.b, theme->close_btn.a);
+                         theme->close_btn.b, focused ? 0.8f : 0.4f);
 
     /* Maximize */
     float max_cx = close_cx - btn_r * 2 - btn_spacing;
+    b->ops->draw_circle(b, ctx, max_cx + 0.5f, btn_cy + 0.5f, btn_r, 0, 0, 0, 0.3f);
     b->ops->draw_circle(b, ctx, max_cx, btn_cy, btn_r,
                          theme->maximize_btn.r, theme->maximize_btn.g,
-                         theme->maximize_btn.b, theme->maximize_btn.a);
+                         theme->maximize_btn.b, focused ? 0.8f : 0.4f);
 
     /* Minimize */
     float min_cx = max_cx - btn_r * 2 - btn_spacing;
+    b->ops->draw_circle(b, ctx, min_cx + 0.5f, btn_cy + 0.5f, btn_r, 0, 0, 0, 0.3f);
     b->ops->draw_circle(b, ctx, min_cx, btn_cy, btn_r,
                          theme->minimize_btn.r, theme->minimize_btn.g,
-                         theme->minimize_btn.b, theme->minimize_btn.a);
+                         theme->minimize_btn.b, focused ? 0.8f : 0.4f);
 }
 
 /* Render a cell grid (vector terminal) directly with the backend */
@@ -910,45 +930,32 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
         /* Skip if fully transparent */
         if (win_opacity < 0.01f) continue;
 
-        /* Drop shadow (behind window, slightly offset) */
+        /* Soft shadow under glass pane */
         if (win->decorated) {
-            float sh_offset = 6.0f;
-            float sh_spread = 12.0f;
-            float sh_alpha = 0.3f * win_opacity;
+            float cr = theme->corner_radius > 0 ? theme->corner_radius : 10.0f;
+            float sh_offset = 4.0f;
+            float sh_spread = 16.0f;
+            float sh_alpha = 0.2f * win_opacity;
+            /* Outer diffuse shadow */
             b->ops->draw_rounded_rect(b, ctx,
                 (float)tmp.frame_rect.x - sh_spread + sh_offset,
                 (float)tmp.frame_rect.y - sh_spread + sh_offset,
                 (float)tmp.frame_rect.w + sh_spread * 2,
                 (float)tmp.frame_rect.h + sh_spread * 2,
-                theme->corner_radius + sh_spread * 0.5f,
+                cr + sh_spread * 0.5f,
+                0, 0, 0, sh_alpha * 0.5f);
+            /* Inner sharper shadow */
+            b->ops->draw_rounded_rect(b, ctx,
+                (float)tmp.frame_rect.x - 4 + sh_offset,
+                (float)tmp.frame_rect.y - 4 + sh_offset,
+                (float)tmp.frame_rect.w + 8,
+                (float)tmp.frame_rect.h + 8,
+                cr + 2,
                 0, 0, 0, sh_alpha);
         }
 
-        /* Render with opacity + 3D transform */
+        /* Render with opacity */
         b->ops->push_state(b, ctx);
-
-        /* Apply window 3D rotation/deform as 2D affine transform */
-#ifdef VGP_HAS_GPU_BACKEND
-        if (b->type == VGP_BACKEND_GPU &&
-            (win->rot_x != 0 || win->rot_y != 0 || win->rot_z != 0 ||
-             win->deform_x != 0 || win->deform_y != 0)) {
-            NVGcontext *vg = ctx;
-            float cx = (float)tmp.frame_rect.x + (float)tmp.frame_rect.w * 0.5f;
-            float cy = (float)tmp.frame_rect.y + (float)tmp.frame_rect.h * 0.5f;
-            nvgSave(vg);
-            nvgTranslate(vg, cx, cy);
-            /* Z rotation */
-            if (win->rot_z != 0) nvgRotate(vg, win->rot_z);
-            /* X/Y rotation approximated as skew for 2D perspective */
-            if (win->rot_y != 0) nvgSkewY(vg, win->rot_y * 0.3f);
-            if (win->rot_x != 0) nvgSkewX(vg, win->rot_x * 0.3f);
-            /* Deformation from drag */
-            if (win->deform_x != 0 || win->deform_y != 0)
-                nvgSkewX(vg, win->deform_x * 0.002f);
-            nvgTranslate(vg, -cx, -cy);
-        }
-#endif
-
         render_decoration(b, ctx, &tmp, theme, win == comp->focused);
         render_window_content(b, ctx, win, out_x);
 
@@ -965,16 +972,6 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
             b->ops->draw_rect(b, ctx, fx, fy, fi_w, fh, 1.0f, 0.8f, 0.0f, 0.9f);             /* left */
             b->ops->draw_rect(b, ctx, fx + fw - fi_w, fy, fi_w, fh, 1.0f, 0.8f, 0.0f, 0.9f); /* right */
         }
-
-        /* Restore 3D transform if applied */
-#ifdef VGP_HAS_GPU_BACKEND
-        if (b->type == VGP_BACKEND_GPU &&
-            (win->rot_x != 0 || win->rot_y != 0 || win->rot_z != 0 ||
-             win->deform_x != 0 || win->deform_y != 0)) {
-            NVGcontext *vg = ctx;
-            nvgRestore(vg);
-        }
-#endif
 
         b->ops->pop_state(b, ctx);
     }
