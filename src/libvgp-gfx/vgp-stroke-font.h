@@ -14,7 +14,7 @@
 
 #include <stdint.h>
 
-#define STROKE_GRID_W  5
+#define STROKE_GRID_W  4
 #define STROKE_GRID_H  7
 #define STROKE_END     255
 #define STROKE_MAX_SEG 24  /* max segments per glyph */

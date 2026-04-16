@@ -398,10 +398,10 @@ vgfx_color_t vgfx_theme_color(vgfx_ctx_t *ctx, int slot)
 float vgfx_text_width(vgfx_ctx_t *ctx, const char *text, int len, float size)
 {
     (void)ctx;
-    /* Stroke font: every character is monospace on a 5x7 grid.
+    /* Stroke font: every character is monospace on a 4x7 grid.
      * Advance = (grid_width + 1) * scale, where scale = size / grid_height */
     float scale = size / 7.0f;
-    float advance = 6.0f * scale;  /* 5 + 1 spacing */
+    float advance = 5.0f * scale;  /* 4 + 1 spacing */
     int n = len < 0 ? (int)strlen(text) : len;
     return (float)n * advance;
 }
