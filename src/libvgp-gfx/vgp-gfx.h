@@ -111,6 +111,13 @@ void vgfx_end_frame(vgfx_ctx_t *ctx);
 int  vgfx_poll(vgfx_ctx_t *ctx, int timeout_ms);
 void vgfx_run(vgfx_ctx_t *ctx, void (*render)(vgfx_ctx_t *ctx));
 
+/* Continuous animation loop: renders every frame at ~60fps.
+ * sample() is called every sample_interval_ms for data collection. */
+void vgfx_run_animated(vgfx_ctx_t *ctx,
+                         void (*render)(vgfx_ctx_t *ctx),
+                         void (*sample)(void),
+                         int sample_interval_ms);
+
 /* ============================================================
  * Drawing primitives
  * ============================================================ */

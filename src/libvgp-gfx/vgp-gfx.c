@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <signal.h>
+#include <time.h>
 
 /* ============================================================
  * Command buffer helpers
@@ -409,4 +410,43 @@ float vgfx_text_height(vgfx_ctx_t *ctx, float size)
 {
     (void)ctx;
     return size * 1.3f; /* approximate line height */
+}
+
+void vgfx_run_animated(vgfx_ctx_t *ctx,
+                         void (*render)(vgfx_ctx_t *ctx),
+                         void (*sample_fn)(void),
+                         int sample_interval_ms)
+{
+    struct timespec last_sample, now, after;
+    clock_gettime(CLOCK_MONOTONIC, &last_sample);
+    if (sample_fn) sample_fn();
+
+    while (ctx->running) {
+        /* Non-blocking event drain */
+        vgfx_poll(ctx, 0);
+
+        /* Periodic data sampling */
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long elapsed_ms = (now.tv_sec - last_sample.tv_sec) * 1000 +
+                          (now.tv_nsec - last_sample.tv_nsec) / 1000000;
+        if (sample_fn && elapsed_ms >= sample_interval_ms) {
+            sample_fn();
+            last_sample = now;
+        }
+
+        /* Always render (continuous animation) */
+        vgfx_begin_frame(ctx);
+        render(ctx);
+        vgfx_end_frame(ctx);
+
+        /* Target ~60fps */
+        clock_gettime(CLOCK_MONOTONIC, &after);
+        long render_us = (after.tv_sec - now.tv_sec) * 1000000 +
+                         (after.tv_nsec - now.tv_nsec) / 1000;
+        long sleep_us = 16000 - render_us; /* 16ms frame budget */
+        if (sleep_us > 1000) {
+            struct timespec ts = { .tv_sec = 0, .tv_nsec = sleep_us * 1000 };
+            nanosleep(&ts, NULL);
+        }
+    }
 }

@@ -169,9 +169,10 @@ dep_vgp_ui = declare_dependency(
 # ============================================================
 
 libvgp_gfx = static_library('vgp-gfx',
-  files('src/libvgp-gfx/vgp-gfx.c', 'src/libvgp-gfx/vgp-gfx-widgets.c'),
+  files('src/libvgp-gfx/vgp-gfx.c', 'src/libvgp-gfx/vgp-gfx-widgets.c',
+        'src/libvgp-gfx/vgp-gfx-3d.c'),
   include_directories : [vgp_inc, vgp_gfx_inc],
-  dependencies : [dep_libvgp],
+  dependencies : [dep_libvgp, dep_math],
 )
 
 dep_vgp_gfx = declare_dependency(
