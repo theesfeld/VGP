@@ -5,6 +5,7 @@
 #include "animation.h"
 #include "lockscreen.h"
 #include "menu.h"
+#include "calendar.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
 
@@ -771,7 +772,8 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  struct vgp_notify *notify,
                                  struct vgp_animation_mgr *anims,
                                  struct vgp_lockscreen *lock,
-                                 struct vgp_menu *menu)
+                                 struct vgp_menu *menu,
+                                 struct vgp_calendar *cal)
 {
     if (output->page_flip_pending)
         return;
@@ -921,6 +923,10 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
     /* Layer 5: Context menu (on active output) */
     if (menu && menu->visible && output_idx == comp->active_output)
         vgp_menu_render(menu, b, ctx, theme->statusbar_font_size);
+
+    /* Layer 5b: Calendar popup */
+    if (cal && cal->visible && output_idx == comp->active_output)
+        vgp_calendar_render(cal, b, ctx, theme->statusbar_font_size);
 
     /* Layer 6: Lock screen (covers everything when locked) */
     if (lock && vgp_lockscreen_is_locked(lock)) {

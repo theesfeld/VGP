@@ -37,6 +37,7 @@ struct vgp_notify;
 struct vgp_animation_mgr;
 struct vgp_lockscreen;
 struct vgp_menu;
+struct vgp_calendar;
 
 void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  vgp_drm_backend_t *drm,
@@ -47,6 +48,7 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                                  struct vgp_notify *notify,
                                  struct vgp_animation_mgr *anims,
                                  struct vgp_lockscreen *lock,
-                                 struct vgp_menu *menu);
+                                 struct vgp_menu *menu,
+                                 struct vgp_calendar *cal);
 
 #endif /* VGP_RENDERER_H */

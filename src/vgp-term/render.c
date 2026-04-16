@@ -121,6 +121,55 @@ void vgp_term_commit_surface(vgp_term_t *term)
         }
     }
 
+    /* URL detection: scan for http:// https:// and underline them */
+    for (int row = 0; row < rows; row++) {
+        for (int col = 0; col < cols - 7; col++) {
+            /* Check for URL prefix */
+            bool is_url = false;
+            if (grid[row * cols + col].codepoint == 'h' &&
+                grid[row * cols + col + 1].codepoint == 't' &&
+                grid[row * cols + col + 2].codepoint == 't' &&
+                grid[row * cols + col + 3].codepoint == 'p') {
+                if (grid[row * cols + col + 4].codepoint == ':')
+                    is_url = true;
+                else if (grid[row * cols + col + 4].codepoint == 's' &&
+                         col + 5 < cols && grid[row * cols + col + 5].codepoint == ':')
+                    is_url = true;
+            }
+            if (is_url) {
+                /* Mark the entire URL with underline */
+                for (int c = col; c < cols; c++) {
+                    uint32_t cp = grid[row * cols + c].codepoint;
+                    if (cp <= 32 || cp == '"' || cp == '\'' || cp == '>' || cp == ')') break;
+                    grid[row * cols + c].attrs |= VGP_CELL_UNDERLINE;
+                    grid[row * cols + c].fg_r = 0x52;
+                    grid[row * cols + c].fg_g = 0x94;
+                    grid[row * cols + c].fg_b = 0xE2;
+                }
+            }
+        }
+    }
+
+    /* Highlight search matches */
+    if (term->search.active && term->search.query_len > 0) {
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols - term->search.query_len; col++) {
+                bool match = true;
+                for (int q = 0; q < term->search.query_len && match; q++) {
+                    if ((char)grid[row * cols + col + q].codepoint != term->search.query[q])
+                        match = false;
+                }
+                if (match) {
+                    for (int q = 0; q < term->search.query_len; q++) {
+                        vgp_cell_t *c = &grid[row * cols + col + q];
+                        c->bg_r = 0xE0; c->bg_g = 0xC0; c->bg_b = 0x40;
+                        c->fg_r = 0x10; c->fg_g = 0x10; c->fg_b = 0x10;
+                    }
+                }
+            }
+        }
+    }
+
     /* Send cell grid to server */
     vgp_cellgrid_send(term->conn, term->window_id,
                        (uint16_t)rows, (uint16_t)cols,

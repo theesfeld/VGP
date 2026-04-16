@@ -258,6 +258,7 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
 
     vgp_ipc_control_init(&server->ctl, &server->loop);
     vgp_power_init(&server->power, 15);
+    vgp_calendar_init(&server->calendar);
 
     /* Theme hot-reload */
     vgp_hotreload_init(&server->hotreload, &server->loop,
@@ -588,6 +589,12 @@ void vgp_server_handle_pointer_button(vgp_server_t *server,
                                      active_out, ws_idx);
                         vgp_renderer_schedule_frame(&server->renderer);
                     }
+                } else if (local_x >= (float)aout->width - 120.0f) {
+                    /* Clock area -- toggle calendar */
+                    vgp_calendar_toggle(&server->calendar,
+                                         (float)aout->width - 10.0f,
+                                         (float)aout->height - bar_h - 210.0f);
+                    vgp_renderer_schedule_frame(&server->renderer);
                 } else {
                     /* Taskbar area: find which window entry was clicked */
                     float taskbar_start = ws_area_end + pad * 3;
@@ -1139,6 +1146,7 @@ void vgp_server_render_frame(vgp_server_t *server)
                                     &server->animations,
                                     &server->lockscreen,
                                     server->desktop_menu.visible ?
-                                        &server->desktop_menu : &server->window_menu);
+                                        &server->desktop_menu : &server->window_menu,
+                                    &server->calendar);
     }
 }

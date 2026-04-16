@@ -108,6 +108,14 @@ typedef struct vgp_term {
         size_t text_len;
     } selection;
 
+    /* Search */
+    struct {
+        char    query[256];
+        int     query_len;
+        bool    active;
+        int     match_row, match_col; /* current match position */
+    } search;
+
     /* Running state */
     bool running;
 } vgp_term_t;

@@ -22,6 +22,7 @@
 #include "session.h"
 #include "power.h"
 #include "hotreload.h"
+#include "calendar.h"
 #include "arena.h"
 
 #include "vgp/log.h"
@@ -51,6 +52,7 @@ typedef struct vgp_server {
     vgp_ipc_control_t     ctl;
     vgp_power_t           power;
     vgp_hotreload_t       hotreload;
+    vgp_calendar_t        calendar;
 
     /* Clipboard */
     char                  *clipboard_data;

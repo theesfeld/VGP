@@ -405,6 +405,65 @@ static void on_vgp_event(vgp_connection_t *conn, const vgp_event_t *ev, void *da
             break;
         }
 
+        /* Ctrl+Shift+F = toggle search */
+        if (ctrl && shift && (sym == 0x0066 || sym == 0x0046)) { /* f/F */
+            term->search.active = !term->search.active;
+            if (term->search.active) {
+                term->search.query_len = 0;
+                term->search.query[0] = '\0';
+                term->search.match_row = -1;
+            }
+            term->render_pending = true;
+            break;
+        }
+
+        /* If search is active, capture input for search query */
+        if (term->search.active) {
+            if (sym == 0xFF1B) { /* Escape: cancel search */
+                term->search.active = false;
+                term->render_pending = true;
+                break;
+            }
+            if (sym == 0xFF08 && term->search.query_len > 0) { /* Backspace */
+                term->search.query[--term->search.query_len] = '\0';
+                term->render_pending = true;
+                break;
+            }
+            if (sym == 0xFF0D) { /* Enter: find next */
+                /* Search through screen for query */
+                if (term->search.query_len > 0) {
+                    for (int r = 0; r < term->rows; r++) {
+                        for (int c = 0; c < term->cols - term->search.query_len; c++) {
+                            bool match = true;
+                            for (int q = 0; q < term->search.query_len && match; q++) {
+                                VTermPos pos = { .row = r, .col = c + q };
+                                VTermScreenCell cell;
+                                vterm_screen_get_cell(term->vt_screen, pos, &cell);
+                                if ((char)cell.chars[0] != term->search.query[q])
+                                    match = false;
+                            }
+                            if (match) {
+                                term->search.match_row = r;
+                                term->search.match_col = c;
+                                break;
+                            }
+                        }
+                        if (term->search.match_row >= 0) break;
+                    }
+                }
+                term->render_pending = true;
+                break;
+            }
+            if (ev->key.utf8_len > 0 && (unsigned char)ev->key.utf8[0] >= 0x20 &&
+                term->search.query_len < 255) {
+                term->search.query[term->search.query_len++] = ev->key.utf8[0];
+                term->search.query[term->search.query_len] = '\0';
+                term->render_pending = true;
+                break;
+            }
+            break; /* consume all input while searching */
+        }
+
         /* Ctrl+Plus/Minus/0 = font size */
         if (ctrl && (sym == 0x002B || sym == 0xFFAB)) { /* + or KP_Add */
             term->config.font_size += 1.0f;

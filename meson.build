@@ -90,6 +90,7 @@ vgp_server_sources = files(
   'src/server/session.c',
   'src/server/power.c',
   'src/server/hotreload.c',
+  'src/server/calendar.c',
   'src/server/backend_cpu.c',
   'src/server/arena.c',
   'src/server/pool.c',
