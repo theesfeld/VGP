@@ -141,31 +141,31 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
                                focused ? cb->a : cb->a * 0.85f);
 
     /* 4. Top specular sheen -- stacked thin lines for a soft highlight */
-    float spec_a = focused ? 0.65f : 0.28f;
+    float spec_a = focused ? 0.90f : 0.45f;
     b->ops->draw_line(b, ctx,
-                       x + cr * 0.5f, y + 0.5f,
-                       x + w - cr * 0.5f, y + 0.5f,
-                       1.5f, 1.0f, 1.0f, 1.0f, spec_a);
+                       x + cr * 0.4f, y + 0.5f,
+                       x + w - cr * 0.4f, y + 0.5f,
+                       2.0f, 1.0f, 1.0f, 1.0f, spec_a);
     b->ops->draw_line(b, ctx,
-                       x + cr, y + 1.5f,
-                       x + w - cr, y + 1.5f,
-                       1.0f, 1.0f, 1.0f, 1.0f, spec_a * 0.55f);
+                       x + cr, y + 2.0f,
+                       x + w - cr, y + 2.0f,
+                       1.0f, 1.0f, 1.0f, 1.0f, spec_a * 0.70f);
     b->ops->draw_line(b, ctx,
-                       x + cr * 1.5f, y + 3.0f,
-                       x + w * 0.55f, y + 3.0f,
-                       1.0f, 1.0f, 1.0f, 1.0f, spec_a * 0.30f);
+                       x + cr * 1.5f, y + 3.5f,
+                       x + w * 0.55f, y + 3.5f,
+                       1.0f, 1.0f, 1.0f, 1.0f, spec_a * 0.40f);
 
     /* 5. Corner specular -- big soft highlight in the top-left.
      *    Real plexi catches a visible sun reflection here. */
-    float hl_a = focused ? 0.22f : 0.10f;
-    for (int i = 0; i < 3; i++) {
-        float rr = cr + (float)i * 4.0f;
+    float hl_a = focused ? 0.40f : 0.20f;
+    for (int i = 0; i < 4; i++) {
+        float rr = cr + (float)i * 5.0f;
         b->ops->draw_line(b, ctx,
-                           x + 3.0f + (float)i * 1.5f,
+                           x + 2.0f + (float)i * 1.8f,
                            y + rr,
                            x + rr,
-                           y + 3.0f + (float)i * 1.5f,
-                           1.2f, 1.0f, 1.0f, 1.0f, hl_a);
+                           y + 2.0f + (float)i * 1.8f,
+                           1.4f, 1.0f, 1.0f, 1.0f, hl_a / (1.0f + (float)i * 0.4f));
     }
 
     /* 6. Chromatic edge fringing -- R and B channels offset at extreme

@@ -20,20 +20,22 @@ void vgp_theme_load_defaults(vgp_theme_t *theme)
 
     /* F-16 HUD colors: white/red/yellow, now over sky.
      * Glass picks up a faint blue tint; content stays dark for contrast. */
-    theme->titlebar_active   = (vgp_color_t){0.55f, 0.70f, 0.90f, 0.12f}; /* cool blue glass */
-    theme->titlebar_inactive = (vgp_color_t){0.50f, 0.60f, 0.75f, 0.07f};
+    theme->titlebar_active   = (vgp_color_t){0.60f, 0.75f, 0.95f, 0.08f}; /* cool glass, almost clear */
+    theme->titlebar_inactive = (vgp_color_t){0.55f, 0.65f, 0.80f, 0.04f};
     theme->border_active     = vgp_color_hex(0xFFD700); /* yellow accent */
     theme->border_inactive   = vgp_color_hex(0x666666);
     theme->title_text_active   = vgp_color_hex(0xFFFFF2); /* near-white */
     theme->title_text_inactive = vgp_color_hex(0x888888);
-    theme->close_btn         = vgp_color_hex(0xCCCCCC); /* white, red on hover */
+    theme->close_btn         = vgp_color_hex(0xCCCCCC);
     theme->maximize_btn      = vgp_color_hex(0xCCCCCC);
     theme->minimize_btn      = vgp_color_hex(0xCCCCCC);
     theme->close_btn_hover   = vgp_color_hex(0xFF3333);
     theme->background        = vgp_color_hex(0x000000);
-    theme->statusbar_bg      = (vgp_color_t){0.08f, 0.14f, 0.24f, 0.28f}; /* glass panel */
+    theme->statusbar_bg      = (vgp_color_t){0.08f, 0.14f, 0.24f, 0.22f}; /* glass panel */
     theme->statusbar_text    = vgp_color_hex(0xFFFFF2);
-    theme->content_bg        = (vgp_color_t){0.03f, 0.05f, 0.09f, 0.62f}; /* dark plexi, sky leaks at edges */
+    /* Content plate: low alpha so the sky shows clearly through.
+     * Apps paint bright vector primitives on top -- HUD projection. */
+    theme->content_bg        = (vgp_color_t){0.04f, 0.07f, 0.12f, 0.28f};
 
     /* Font sizes -- larger for readability */
     theme->title_font_size = 15.0f;
