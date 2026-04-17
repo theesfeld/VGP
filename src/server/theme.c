@@ -10,18 +10,18 @@
 
 void vgp_theme_load_defaults(vgp_theme_t *theme)
 {
-    /* Geometry -- larger readable HUD style */
+    /* Geometry -- HUD combiner style: strongly rounded plexi corners */
     theme->titlebar_height = 32.0f;
     theme->border_width = 1.0f;
-    theme->corner_radius = 8.0f;
+    theme->corner_radius = 20.0f;
     theme->button_radius = 5.0f;
     theme->button_spacing = 12.0f;
-    theme->button_margin_right = 16.0f;
+    theme->button_margin_right = 18.0f;
 
     /* F-16 HUD colors: white/red/yellow, now over sky.
      * Glass picks up a faint blue tint; content stays dark for contrast. */
-    theme->titlebar_active   = (vgp_color_t){0.60f, 0.75f, 0.95f, 0.08f}; /* cool glass, almost clear */
-    theme->titlebar_inactive = (vgp_color_t){0.55f, 0.65f, 0.80f, 0.04f};
+    theme->titlebar_active   = (vgp_color_t){0.65f, 0.78f, 0.95f, 0.14f}; /* cool glass tint */
+    theme->titlebar_inactive = (vgp_color_t){0.55f, 0.65f, 0.80f, 0.08f};
     theme->border_active     = vgp_color_hex(0xFFD700); /* yellow accent */
     theme->border_inactive   = vgp_color_hex(0x666666);
     theme->title_text_active   = vgp_color_hex(0xFFFFF2); /* near-white */
@@ -35,7 +35,7 @@ void vgp_theme_load_defaults(vgp_theme_t *theme)
     theme->statusbar_text    = vgp_color_hex(0xFFFFF2);
     /* Content plate: low alpha so the sky shows clearly through.
      * Apps paint bright vector primitives on top -- HUD projection. */
-    theme->content_bg        = (vgp_color_t){0.04f, 0.07f, 0.12f, 0.28f};
+    theme->content_bg        = (vgp_color_t){0.03f, 0.06f, 0.11f, 0.38f};
 
     /* Font sizes -- larger for readability */
     theme->title_font_size = 15.0f;

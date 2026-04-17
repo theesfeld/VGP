@@ -101,24 +101,26 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
 
     /* === PHOTOREALISTIC PLEXIGLASS PANEL ===
      *
-     * Layered nanovg primitives simulate real glass:
-     *   1. Outer focus glow (very soft halo in the accent color)
-     *   2. Body tint - cool-blue, low alpha, sky bleeds through
-     *   3. Translucent content plate (dark) for readability
-     *   4. Top-edge specular sheen (3 stacked lines = soft highlight)
-     *   5. Big corner specular in the top-left -- catches sun
-     *   6. Chromatic aberration ring at the bezel edge (R/G/B offset lines)
-     *   7. Internal reflection hairline just inside the top edge
-     *   8. Distortion streaks (very faint diagonals) for plexi texture
-     *   9. Dark refraction edge along the bottom
+     * Order of operations (what each layer contributes):
+     *   1. Outer focus halo (yellow rings) -- only when focused
+     *   2. Outer bright bevel -- sheet edge catching ambient light
+     *   3. Glass body tint -- cool-blue, sky reads through
+     *   4. Dark content plate -- readable dark fill inside the glass
+     *   5. TOP HIGHLIGHT GRADIENT -- horizontal bands fading down to
+     *      simulate light scattering through the plexi thickness
+     *   6. Corner specular: four-ray sunburst in upper-left
+     *   7. Top-edge specular sheen (stacked lines, brightest at edge)
+     *   8. Chromatic edge fringing (R inside / C outside, mirrored)
+     *   9. Internal reflection hairline
+     *  10. Bottom refraction: dark edge + thin sky-bleed underneath
      */
 
-    /* 1. Outer soft glow -- focus indicator + ambient spill */
+    /* 1. Outer focus halo -- soft yellow glow for focused windows */
     if (focused) {
         const vgp_color_t *ac = &theme->border_active;
-        for (int i = 4; i >= 1; i--) {
-            float g = (float)i;
-            float a = 0.055f / g;
+        for (int i = 5; i >= 1; i--) {
+            float g = (float)i * 1.4f;
+            float a = 0.06f / (float)i;
             b->ops->draw_rounded_rect(b, ctx,
                                        x - g, y - g, w + 2 * g, h + 2 * g,
                                        cr + g,
@@ -126,101 +128,119 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
         }
     }
 
-    /* 2. Glass body: cool-blue tint. Sky reads through. */
+    /* 2. Outer bright bevel -- draws the glass SHEET edge so the pane
+     * reads as a physical object, not just a tinted hole.
+     * Three concentric rounded rects with additive alpha create a soft
+     * bright ring 1-3px wide around the pane. */
+    for (int i = 3; i >= 1; i--) {
+        float fi = (float)i;
+        b->ops->draw_rounded_rect(b, ctx,
+                                   x - fi, y - fi,
+                                   w + 2 * fi, h + 2 * fi,
+                                   cr + fi,
+                                   1.0f, 1.0f, 1.0f,
+                                   focused ? 0.10f : 0.05f);
+    }
+
+    /* 3. Glass body tint -- cool blue. Sky shows through. */
     const vgp_color_t *tb = focused ? &theme->titlebar_active : &theme->titlebar_inactive;
     b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
                                tb->r, tb->g, tb->b, tb->a);
 
-    /* 3. Content plate -- darker translucent "frosted" pane */
+    /* 4. Content plate -- dark translucent fill for readability */
     const vgp_color_t *cb = &theme->content_bg;
-    float inset = 2.0f;
-    b->ops->draw_rounded_rect(b, ctx, x + inset, y + th, w - inset * 2,
-                               h - th - inset,
-                               cr > inset ? cr - inset : 2.0f,
+    float inset = 3.0f;
+    float content_cr = cr > inset ? cr - inset : 3.0f;
+    b->ops->draw_rounded_rect(b, ctx, x + inset, y + th,
+                               w - inset * 2, h - th - inset,
+                               content_cr,
                                cb->r, cb->g, cb->b,
-                               focused ? cb->a : cb->a * 0.85f);
+                               focused ? cb->a : cb->a * 0.80f);
 
-    /* 4. Top specular sheen -- stacked thin lines for a soft highlight */
-    float spec_a = focused ? 0.90f : 0.45f;
+    /* 5. TOP HIGHLIGHT GRADIENT
+     *    Real plexi scatters light through its thickness -- brightest
+     *    just below the top edge, fading down. Stacked horizontal rects
+     *    with decreasing alpha simulate the gradient in pure nanovg. */
+    {
+        int bands = 10;
+        float inner_x = x + cr * 0.55f;
+        float inner_w = w - cr * 1.10f;
+        for (int i = 0; i < bands; i++) {
+            float fi = (float)i;
+            float band_y = y + 1.5f + fi * 2.0f;
+            float a = (1.0f - fi / (float)bands);
+            a = a * a * (focused ? 0.22f : 0.11f);
+            b->ops->draw_rect(b, ctx,
+                               inner_x, band_y,
+                               inner_w, 1.8f,
+                               1.0f, 1.0f, 1.0f, a);
+        }
+    }
+
+    /* 6. Corner specular sunburst -- top-left corner catching the sun.
+     *    Four lines radiating along the corner arc. */
+    {
+        float hl_a = focused ? 0.55f : 0.25f;
+        for (int i = 0; i < 5; i++) {
+            float fi = (float)i;
+            float spread = cr * (0.5f + fi * 0.35f);
+            float dx = 1.5f + fi * 1.4f;
+            float dy = 1.5f + fi * 1.4f;
+            b->ops->draw_line(b, ctx,
+                               x + dx,           y + spread,
+                               x + spread,       y + dy,
+                               1.5f, 1.0f, 1.0f, 1.0f,
+                               hl_a / (1.0f + fi * 0.5f));
+        }
+    }
+
+    /* 7. Top-edge specular sheen -- a sharp bright line on the surface */
+    float spec_a = focused ? 0.95f : 0.45f;
     b->ops->draw_line(b, ctx,
-                       x + cr * 0.4f, y + 0.5f,
-                       x + w - cr * 0.4f, y + 0.5f,
+                       x + cr * 0.35f, y + 0.5f,
+                       x + w - cr * 0.35f, y + 0.5f,
                        2.0f, 1.0f, 1.0f, 1.0f, spec_a);
     b->ops->draw_line(b, ctx,
                        x + cr, y + 2.0f,
                        x + w - cr, y + 2.0f,
-                       1.0f, 1.0f, 1.0f, 1.0f, spec_a * 0.70f);
-    b->ops->draw_line(b, ctx,
-                       x + cr * 1.5f, y + 3.5f,
-                       x + w * 0.55f, y + 3.5f,
-                       1.0f, 1.0f, 1.0f, 1.0f, spec_a * 0.40f);
+                       1.0f, 1.0f, 1.0f, 1.0f, spec_a * 0.55f);
 
-    /* 5. Corner specular -- big soft highlight in the top-left.
-     *    Real plexi catches a visible sun reflection here. */
-    float hl_a = focused ? 0.40f : 0.20f;
-    for (int i = 0; i < 4; i++) {
-        float rr = cr + (float)i * 5.0f;
-        b->ops->draw_line(b, ctx,
-                           x + 2.0f + (float)i * 1.8f,
-                           y + rr,
-                           x + rr,
-                           y + 2.0f + (float)i * 1.8f,
-                           1.4f, 1.0f, 1.0f, 1.0f, hl_a / (1.0f + (float)i * 0.4f));
-    }
-
-    /* 6. Chromatic edge fringing -- R and B channels offset at extreme
-     *    edges. Classic plexi refraction cue. */
+    /* 8. Chromatic edge fringing -- glass refraction splits light */
     const vgp_color_t *bc = focused ? &theme->border_active : &theme->border_inactive;
-    float edge_a = focused ? 0.22f : 0.10f;
-    /* Left edge: red tint just inside, cyan just outside */
+    float edge_a = focused ? 0.28f : 0.12f;
     b->ops->draw_line(b, ctx, x - 0.5f, y + cr, x - 0.5f, y + h - cr, 1.0f,
-                       0.9f, 0.4f, 0.4f, edge_a * 0.8f);
+                       0.95f, 0.45f, 0.45f, edge_a * 0.85f);
     b->ops->draw_line(b, ctx, x + 0.5f, y + cr, x + 0.5f, y + h - cr, 1.0f,
-                       0.4f, 0.8f, 0.9f, edge_a * 0.6f);
-    /* Right edge: mirrored fringing */
+                       0.45f, 0.80f, 0.95f, edge_a * 0.65f);
     b->ops->draw_line(b, ctx, x + w + 0.5f, y + cr, x + w + 0.5f, y + h - cr, 1.0f,
-                       0.4f, 0.8f, 0.9f, edge_a * 0.6f);
+                       0.45f, 0.80f, 0.95f, edge_a * 0.65f);
     b->ops->draw_line(b, ctx, x + w - 0.5f, y + cr, x + w - 0.5f, y + h - cr, 1.0f,
-                       0.9f, 0.4f, 0.4f, edge_a * 0.8f);
-    /* Base body edge line so the shape reads crisp */
-    b->ops->draw_line(b, ctx, x, y + cr, x, y + h - cr, 1.0f,
+                       0.95f, 0.45f, 0.45f, edge_a * 0.85f);
+    /* Accent edge line for focused/inactive contrast */
+    b->ops->draw_line(b, ctx, x, y + cr, x, y + h - cr, 0.8f,
                        bc->r, bc->g, bc->b, edge_a);
-    b->ops->draw_line(b, ctx, x + w, y + cr, x + w, y + h - cr, 1.0f,
+    b->ops->draw_line(b, ctx, x + w, y + cr, x + w, y + h - cr, 0.8f,
                        bc->r, bc->g, bc->b, edge_a);
 
-    /* 7. Internal reflection hairline -- thin dark line 2px inside the
-     *    top edge. Light bouncing back out through the glass. */
+    /* 9. Internal reflection hairline -- dark line a few pixels below
+     *    the top edge. Visual cue for glass thickness. */
     b->ops->draw_line(b, ctx,
-                       x + cr * 1.2f, y + 4.0f,
-                       x + w - cr * 1.2f, y + 4.0f,
-                       0.5f, 0.0f, 0.0f, 0.0f, 0.22f);
+                       x + cr * 1.1f, y + th - 8.0f,
+                       x + w - cr * 1.1f, y + th - 8.0f,
+                       0.5f, 0.0f, 0.0f, 0.0f, 0.18f);
 
-    /* 8. Distortion streaks -- faint diagonals across the body.
-     *    Plexi isn't optically perfect; this hints at surface texture. */
-    float dist_a = 0.035f;
-    for (int i = 0; i < 3; i++) {
-        float fi = (float)i;
-        float x0 = x + 20.0f + fi * 80.0f;
-        float x1 = x0 + 40.0f;
-        b->ops->draw_line(b, ctx,
-                           x0, y + th + 8.0f,
-                           x1, y + h - 8.0f,
-                           0.5f, 1.0f, 1.0f, 1.0f, dist_a);
-    }
-
-    /* 9. Bottom edge: dark refraction line for depth */
-    b->ops->draw_line(b, ctx, x + cr, y + h, x + w - cr, y + h, 1.0f,
-                       0.0f, 0.0f, 0.0f, 0.50f);
-    /* Bottom inner glow from clouds below seeping in */
-    b->ops->draw_line(b, ctx, x + cr * 1.5f, y + h - 1.5f,
-                       x + w - cr * 1.5f, y + h - 1.5f, 0.5f,
-                       0.75f, 0.85f, 0.95f, 0.12f);
+    /* 10. Bottom edge: dark refraction + thin sky bleed beneath */
+    b->ops->draw_line(b, ctx, x + cr, y + h, x + w - cr, y + h, 1.2f,
+                       0.0f, 0.0f, 0.0f, 0.55f);
+    b->ops->draw_line(b, ctx, x + cr * 1.5f, y + h - 2.0f,
+                       x + w - cr * 1.5f, y + h - 2.0f, 0.6f,
+                       0.85f, 0.92f, 1.00f, 0.18f);
 
     /* Titlebar/content separator -- accent hairline */
     b->ops->draw_line(b, ctx,
-                       x + cr, y + th + 0.5f,
-                       x + w - cr, y + th + 0.5f,
-                       0.5f, bc->r, bc->g, bc->b, edge_a * 0.7f);
+                       x + cr * 0.8f, y + th + 0.5f,
+                       x + w - cr * 0.8f, y + th + 0.5f,
+                       0.5f, bc->r, bc->g, bc->b, edge_a * 0.8f);
 
     /* === ETCHED TITLE TEXT ===
      * Static decoration = etched into the glass.

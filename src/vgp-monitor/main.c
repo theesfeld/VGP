@@ -202,104 +202,153 @@ static vgfx_color_t usage_color(float v) {
 }
 
 /* ============================================================
- * HUD instrument: labeled vertical bar gauge
+ * HUD instrument: F-16 tape scale gauge
  *
- * +------+
- * | LBL  |   <- ETCHED label (static)
- * +------+
- * | 67%  |   <- PROJECTED value (dynamic)
- * |------|
- * |##### |   <- bar fills bottom-up
- * |##### |
- * |##### |
- * |      |
- * +------+
+ *    LBL     <-  ETCHED label above
+ *   +---+
+ *   |100|
+ *   |---|
+ *   | 75|
+ *   |   |---[ 67]    <- left-pointing caret with bracketed digital
+ *   | 50|   (current value)
+ *   |---|
+ *   | 25|
+ *   |---|
+ *   |  0|
+ *   +---+
+ *
+ * The "bar" is a numbered tape scale; the current value is shown as a
+ * ">" pointer sliding along the scale with a [XX] readout beside it.
  * ============================================================ */
 
 static void draw_bar_gauge(vgfx_ctx_t *ctx, float x, float y, float w, float h,
                              const char *label, float value /* 0..1 */)
 {
-    float fs = 14.0f;
+    float fs = 13.0f;
+    float tick_fs = 10.0f;
     vgfx_color_t col = usage_color(value);
+    if (value < 0.0f) value = 0.0f;
+    if (value > 1.0f) value = 1.0f;
 
-    /* ETCHED label (static) */
-    float lw_text = vgfx_text_width(ctx, label, -1, fs);
-    float lx = x + (w - lw_text) * 0.5f;
-    /* Shadow below-right */
+    /* ETCHED label above the gauge */
+    float lw = vgfx_text_width(ctx, label, -1, fs);
+    float lx = x + (w - lw) * 0.5f;
     vgfx_text(ctx, label, lx + 0.6f, y + fs + 0.6f, fs, vgfx_rgba(0, 0, 0, 0.5f));
-    /* Highlight above-left */
-    vgfx_text(ctx, label, lx - 0.3f, y + fs - 0.3f, fs, vgfx_rgba(1, 1, 1, 0.12f));
-    /* Main */
-    vgfx_text_bold(ctx, label, lx, y + fs, fs, C_FG);
+    vgfx_text_bold(ctx, label, lx, y + fs, fs, C_DIM);
 
-    /* PROJECTED value (dynamic) */
-    char val[8];
-    snprintf(val, sizeof(val), "%3.0f%%", value * 100.0f);
-    float vw_text = vgfx_text_width(ctx, val, -1, fs);
-    float vx = x + (w - vw_text) * 0.5f;
-    float vy = y + fs * 2.8f;
-    vgfx_text_bold(ctx, val, vx, vy, fs, col);
+    /* Tape area geometry */
+    float tape_w = 42.0f;
+    float tape_x = x + 4.0f;
+    float tape_top = y + fs * 1.8f + 4.0f;
+    float tape_bot = y + h - 4.0f;
+    float tape_h = tape_bot - tape_top;
 
-    /* Bar outline -- ETCHED box */
-    float bar_top = y + fs * 4.0f;
-    float bar_bot = y + h - fs * 0.6f;
-    float bar_h = bar_bot - bar_top;
-    vgfx_rect_outline(ctx, x, bar_top, w, bar_h, 1.0f, C_DIM);
+    /* Boxed tape outline */
+    vgfx_rect_outline(ctx, tape_x, tape_top, tape_w, tape_h, 1.0f, C_DIM);
 
-    /* Tick marks at 25%, 50%, 75% */
-    for (int i = 1; i <= 3; i++) {
-        float ty = bar_bot - (float)i * 0.25f * bar_h;
-        vgfx_line(ctx, x, ty, x + 4, ty, 0.8f, C_DIM);
-        vgfx_line(ctx, x + w - 4, ty, x + w, ty, 0.8f, C_DIM);
+    /* Tick marks every 10%, labeled every 25% */
+    for (int i = 0; i <= 10; i++) {
+        float fv = (float)i * 0.1f;
+        float ty = tape_bot - fv * tape_h;
+        bool major = (i % 5 == 0);
+        /* Right-side ticks */
+        vgfx_line(ctx, tape_x + tape_w - (major ? 8.0f : 4.0f), ty,
+                         tape_x + tape_w, ty,
+                         major ? 1.0f : 0.6f, C_DIM);
+        /* Left-side ticks */
+        vgfx_line(ctx, tape_x, ty,
+                         tape_x + (major ? 8.0f : 4.0f), ty,
+                         major ? 1.0f : 0.6f, C_DIM);
+        if (major) {
+            char lbl[6]; snprintf(lbl, sizeof(lbl), "%d", i * 10);
+            float tw = vgfx_text_width(ctx, lbl, -1, tick_fs);
+            vgfx_text(ctx, lbl, tape_x + (tape_w - tw) * 0.5f,
+                       ty + tick_fs * 0.35f, tick_fs, C_DIM);
+        }
     }
 
-    /* PROJECTED fill (dynamic) -- bottom up */
-    float fill_h = bar_h * value;
-    if (fill_h < 0) fill_h = 0;
-    if (fill_h > bar_h) fill_h = bar_h;
-    vgfx_rect(ctx, x + 1, bar_bot - fill_h, w - 2, fill_h, col);
+    /* Current-value pointer: right-pointing caret ">" just outside
+     * the tape, aligned to the current percentage. */
+    float py = tape_bot - value * tape_h;
+    float px = tape_x + tape_w + 2.0f;
+    vgfx_line(ctx, px, py - 5.0f, px + 7.0f, py, 1.4f, col);
+    vgfx_line(ctx, px + 7.0f, py, px, py + 5.0f, 1.4f, col);
+    /* Horizontal mark line across the tape at current value */
+    vgfx_line(ctx, tape_x + 1.0f, py, tape_x + tape_w - 1.0f, py, 1.0f, col);
+
+    /* Bracketed PROJECTED digital readout beside the pointer */
+    char val[12]; snprintf(val, sizeof(val), "[%3d]", (int)(value * 100.0f));
+    vgfx_text_bold(ctx, val, px + 12.0f, py + fs * 0.35f, fs, col);
 }
 
 /* ============================================================
- * Per-core bar strip
+ * Per-core readout grid: [NN] NN% rows, bracketed digital style
+ *
+ *   CORES
+ *   [00] 19    [01] 22    [02] 05    [03] 67
+ *   [04] 18    [05] 30    [06] 82    [07] 14
+ *
+ * Each core is rendered as an ETCHED bracketed index followed by
+ * a PROJECTED percentage value colored by usage.
  * ============================================================ */
 
 static void draw_core_strip(vgfx_ctx_t *ctx, float x, float y, float w, float h)
 {
-    float fs = 10.0f;
-    /* ETCHED label */
-    vgfx_text(ctx, "CORES", x, y + fs, 12.0f, C_DIM);
+    float label_fs = 12.0f;
+    float cell_fs = 12.0f;
 
-    float top = y + fs * 2.0f;
-    float bottom = y + h;
-    float bar_h = bottom - top - 14.0f; /* leave room for bottom labels */
+    /* ETCHED section label */
+    vgfx_text(ctx, "CORES", x + 0.6f, y + label_fs + 0.6f, label_fs,
+               vgfx_rgba(0, 0, 0, 0.5f));
+    vgfx_text_bold(ctx, "CORES", x, y + label_fs, label_fs, C_DIM);
 
     if (D.num_cores <= 0) return;
-    float bar_w = (w - (float)(D.num_cores - 1) * 3.0f) / (float)D.num_cores;
-    if (bar_w < 8) bar_w = 8;
+
+    /* 4-column grid */
+    int cols = 4;
+    float row_h = 18.0f;
+    float grid_top = y + label_fs * 2.0f;
+    float cell_w = w / (float)cols;
+    (void)h;
 
     for (int i = 0; i < D.num_cores; i++) {
-        float bx = x + (float)i * (bar_w + 3.0f);
+        int r = i / cols;
+        int c = i % cols;
+        if ((float)(r + 1) * row_h > h - label_fs * 2.0f) break;
+
+        float cx = x + (float)c * cell_w;
+        float cy = grid_top + (float)r * row_h;
         float v = D.core[i];
         vgfx_color_t col = usage_color(v);
 
-        /* Bar outline */
-        vgfx_rect_outline(ctx, bx, top, bar_w, bar_h, 0.8f, C_DIM);
+        /* Bracketed index ETCHED */
+        char idx[8]; snprintf(idx, sizeof(idx), "[%02d]", i);
+        vgfx_text(ctx, idx, cx + 0.5f, cy + cell_fs + 0.5f, cell_fs,
+                   vgfx_rgba(0, 0, 0, 0.5f));
+        vgfx_text(ctx, idx, cx, cy + cell_fs, cell_fs, C_DIM);
 
-        /* Fill */
-        float fh = bar_h * v;
-        if (fh > 0 && fh <= bar_h)
-            vgfx_rect(ctx, bx + 1, top + bar_h - fh, bar_w - 2, fh, col);
+        /* PROJECTED value */
+        char val[8]; snprintf(val, sizeof(val), "%3d", (int)(v * 100.0f));
+        vgfx_text_bold(ctx, val, cx + 40.0f, cy + cell_fs, cell_fs, col);
 
-        /* Core number (ETCHED below bar) */
-        char n[8]; snprintf(n, sizeof(n), "%d", i);
-        float nw = vgfx_text_width(ctx, n, -1, fs);
-        vgfx_text(ctx, n, bx + (bar_w - nw) * 0.5f, bottom - 3, fs, C_DIM);
+        /* Tiny inline bar (tick indicator) */
+        float bar_x = cx + 70.0f;
+        float bar_w = cell_w - 80.0f;
+        if (bar_w > 10.0f) {
+            vgfx_line(ctx, bar_x, cy + cell_fs * 0.65f,
+                             bar_x + bar_w, cy + cell_fs * 0.65f,
+                             1.0f, C_DIM);
+            /* Mark at current value */
+            float mx = bar_x + bar_w * v;
+            vgfx_line(ctx, mx, cy + cell_fs * 0.35f,
+                             mx, cy + cell_fs * 0.95f, 1.4f, col);
+        }
     }
 }
 
 /* ============================================================
- * Data field: LABEL [VALUE]
+ * Data field: LABEL  [VALUE]
+ * Bracketed digital readout style. Label ETCHED, value PROJECTED.
  * ============================================================ */
 
 static void draw_field(vgfx_ctx_t *ctx, float x, float y, float label_w,
@@ -307,10 +356,14 @@ static void draw_field(vgfx_ctx_t *ctx, float x, float y, float label_w,
                          vgfx_color_t value_color)
 {
     float fs = 13.0f;
-    /* ETCHED label */
+    /* ETCHED label with offset shadow */
+    vgfx_text(ctx, label, x + 0.6f, y + fs + 0.6f, fs, vgfx_rgba(0, 0, 0, 0.5f));
     vgfx_text(ctx, label, x, y + fs, fs, C_DIM);
-    /* PROJECTED value */
-    vgfx_text_bold(ctx, value, x + label_w, y + fs, fs, value_color);
+
+    /* Bracketed PROJECTED value */
+    char boxed[128];
+    snprintf(boxed, sizeof(boxed), "[%s]", value);
+    vgfx_text_bold(ctx, boxed, x + label_w, y + fs, fs, value_color);
 }
 
 /* ============================================================
