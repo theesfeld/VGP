@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.theesfeld.vgp.bar</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>VGP Bar</name>
+  <summary>Standalone scriptable HUD status bar</summary>
+  <description>
+    <p>
+      Transparent status-bar window. Each widget is rendered as a boxed
+      segment with an etched label and a phosphor-glow dynamic value.
+      Widgets are shell-scripted and refresh on configurable intervals.
+    </p>
+  </description>
+  <launchable type="desktop-id">vgp-bar.desktop</launchable>
+  <url type="homepage">https://github.com/theesfeld/VGP</url>
+  <url type="bugtracker">https://github.com/theesfeld/VGP/issues</url>
+  <developer id="io.github.theesfeld">
+    <name>William Theesfeld</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>System</category>
+  </categories>
+  <provides>
+    <binary>vgp-bar</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-04-17" />
+  </releases>
+</component>

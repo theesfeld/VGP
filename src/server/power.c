@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "power.h"
 #include "server.h"
 #include "vgp/log.h"

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_STROKE_FONT_H
 #define VGP_STROKE_FONT_H
 

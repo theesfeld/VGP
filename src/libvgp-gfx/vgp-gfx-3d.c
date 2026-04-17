@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP 3D Math + Wireframe Rendering
  * All 3D projection is client-side. Results are 2D LINE commands. */
 

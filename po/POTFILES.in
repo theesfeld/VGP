@@ -1,0 +1,28 @@
+# Files to extract translatable strings from.
+# Add source files as user-visible strings are marked with _("...").
+
+src/server/main.c
+src/vgp-term/main.c
+src/vgp-edit/main.c
+src/vgp-files/main.c
+src/vgp-launcher/main.c
+src/vgp-monitor/main.c
+src/vgp-settings/main.c
+src/vgp-bar/main.c
+
+data/vgp-term.desktop
+data/vgp-edit.desktop
+data/vgp-files.desktop
+data/vgp-launcher.desktop
+data/vgp-monitor.desktop
+data/vgp-settings.desktop
+data/vgp-bar.desktop
+
+data/metainfo/io.github.theesfeld.vgp.metainfo.xml
+data/metainfo/io.github.theesfeld.vgp.term.metainfo.xml
+data/metainfo/io.github.theesfeld.vgp.edit.metainfo.xml
+data/metainfo/io.github.theesfeld.vgp.files.metainfo.xml
+data/metainfo/io.github.theesfeld.vgp.launcher.metainfo.xml
+data/metainfo/io.github.theesfeld.vgp.monitor.metainfo.xml
+data/metainfo/io.github.theesfeld.vgp.settings.metainfo.xml
+data/metainfo/io.github.theesfeld.vgp.bar.metainfo.xml

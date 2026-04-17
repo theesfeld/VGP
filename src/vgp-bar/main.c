@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP Bar -- HUD-style status strip.
  * Each widget is a boxed ETCHED label + PROJECTED value.
  * Transparent background; the compositor's plexiglass sits underneath. */

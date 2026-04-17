@@ -1,0 +1,7 @@
+#compdef vgp
+# zsh completion for vgp
+
+_arguments \
+  '--config[config file path]:config file:_files' \
+  '(--version -v)'{-v,--version}'[print version and exit]' \
+  '(--help -h)'{-h,--help}'[show usage and exit]'

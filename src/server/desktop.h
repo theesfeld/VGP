@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_DESKTOP_H
 #define VGP_DESKTOP_H
 

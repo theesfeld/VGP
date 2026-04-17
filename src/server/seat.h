@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_SEAT_H
 #define VGP_SEAT_H
 

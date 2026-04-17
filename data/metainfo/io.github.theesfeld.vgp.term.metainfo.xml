@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.theesfeld.vgp.term</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>VGP Terminal</name>
+  <summary>Vector-rendered terminal emulator</summary>
+  <description>
+    <p>
+      A VT100-family terminal emulator for the VGP display server. Every glyph
+      is rendered as vector strokes; no bitmap fonts.
+    </p>
+  </description>
+  <launchable type="desktop-id">vgp-term.desktop</launchable>
+  <url type="homepage">https://github.com/theesfeld/VGP</url>
+  <url type="bugtracker">https://github.com/theesfeld/VGP/issues</url>
+  <developer id="io.github.theesfeld">
+    <name>William Theesfeld</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <provides>
+    <binary>vgp-term</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-04-17" />
+  </releases>
+</component>

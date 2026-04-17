@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_GFX_3D_H
 #define VGP_GFX_3D_H
 

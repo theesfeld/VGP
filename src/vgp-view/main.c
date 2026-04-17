@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP Image Viewer -- display images using pixel surface protocol */
 
 #include "vgp/vgp.h"

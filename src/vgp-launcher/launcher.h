@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_LAUNCHER_H
 #define VGP_LAUNCHER_H
 

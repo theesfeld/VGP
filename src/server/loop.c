@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "loop.h"
 #include "server.h"
 #include "timer.h"

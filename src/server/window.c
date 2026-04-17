@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "window.h"
 
 vgp_rect_t vgp_window_content_rect(const vgp_rect_t *frame,

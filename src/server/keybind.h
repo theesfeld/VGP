@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_KEYBIND_H
 #define VGP_KEYBIND_H
 

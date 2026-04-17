@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP System Monitor -- F-16 Engine Page Style
  *
  * Clean labeled bar gauges. Every element signifies data.

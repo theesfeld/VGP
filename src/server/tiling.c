@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "tiling.h"
 #include <string.h>
 #include <strings.h>

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "menu.h"
 #include <stdio.h>
 #include <string.h>

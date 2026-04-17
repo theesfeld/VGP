@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_PROTOCOL_H
 #define VGP_PROTOCOL_H
 

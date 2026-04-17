@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "compositor.h"
 #include "tiling.h"
 #include "vgp/log.h"

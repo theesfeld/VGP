@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* NanoVG implementation -- compile core + GLES3 backend in one translation unit */
 #ifdef VGP_HAS_GPU_BACKEND
 

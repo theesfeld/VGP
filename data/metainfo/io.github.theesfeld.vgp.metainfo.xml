@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.theesfeld.vgp</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>VGP</name>
+  <summary>GPU-accelerated vector display server and desktop environment</summary>
+  <description>
+    <p>
+      VGP is a vector-rendered display server and desktop environment for Linux.
+      Every pixel is vector-drawn: windows are translucent plexiglass panes,
+      apps are F-16 HUD/MFD style interfaces, and text uses a stroke font.
+    </p>
+    <p>
+      VGP runs directly on DRM/KMS with GBM/EGL, no X11 or Wayland required.
+      Bundled apps include a terminal, file manager, text editor, launcher,
+      system monitor, settings, and status bar.
+    </p>
+  </description>
+  <launchable type="desktop-id">vgp.desktop</launchable>
+  <url type="homepage">https://github.com/theesfeld/VGP</url>
+  <url type="bugtracker">https://github.com/theesfeld/VGP/issues</url>
+  <url type="vcs-browser">https://github.com/theesfeld/VGP</url>
+  <developer id="io.github.theesfeld">
+    <name>William Theesfeld</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>System</category>
+  </categories>
+  <provides>
+    <binary>vgp</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-04-17">
+      <description>
+        <p>Initial public release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

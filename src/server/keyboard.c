@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "keyboard.h"
 #include "vgp/log.h"
 

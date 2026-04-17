@@ -1,12 +1,35 @@
 project('vgp', 'c',
   version : '0.1.0',
+  license : 'MIT',
+  license_files : ['LICENSE'],
+  meson_version : '>=0.62',
   default_options : [
     'c_std=c17',
     'warning_level=2',
+    'buildtype=debugoptimized',
   ],
 )
 
 cc = meson.get_compiler('c')
+
+# Publish the project version as a C macro to every compiled file.
+add_project_arguments(
+  '-DVGP_VERSION="@0@"'.format(meson.project_version()),
+  language : 'c',
+)
+
+# Reproducible-build support: no __DATE__ / __TIME__ / __FILE__ path
+# embedding, use the relative source path so builds are deterministic
+# when SOURCE_DATE_EPOCH is set.
+if cc.has_argument('-Wdate-time')
+  add_project_arguments('-Wdate-time', language : 'c')
+endif
+if cc.has_argument('-ffile-prefix-map=@0@=.'.format(meson.project_source_root()))
+  add_project_arguments(
+    '-ffile-prefix-map=@0@=.'.format(meson.project_source_root()),
+    language : 'c',
+  )
+endif
 
 # ============================================================
 # Dependencies
@@ -140,12 +163,39 @@ executable('vgp',
 libvgp = shared_library('vgp',
   files('src/libvgp/vgp.c', 'src/libvgp/xdg.c'),
   include_directories : vgp_inc,
+  version : meson.project_version(),
+  soversion : '0',
   install : true,
 )
 
 dep_libvgp = declare_dependency(
   link_with : libvgp,
   include_directories : vgp_inc,
+)
+
+# Public headers
+install_headers(
+  'include/vgp/vgp.h',
+  'include/vgp/protocol.h',
+  'include/vgp/types.h',
+  'include/vgp/log.h',
+  'include/vgp/xdg.h',
+  subdir : 'vgp',
+)
+
+# pkg-config file generated from data/libvgp.pc.in
+pkg_conf = configuration_data()
+pkg_conf.set('prefix',     get_option('prefix'))
+pkg_conf.set('libdir',     get_option('prefix') / get_option('libdir'))
+pkg_conf.set('includedir', get_option('prefix') / get_option('includedir'))
+pkg_conf.set('version',    meson.project_version())
+
+configure_file(
+  input : 'data/libvgp.pc.in',
+  output : 'libvgp.pc',
+  configuration : pkg_conf,
+  install : true,
+  install_dir : get_option('libdir') / 'pkgconfig',
 )
 
 # ============================================================
@@ -331,6 +381,102 @@ install_subdir('data',
   exclude_files : [
     'vgp-term.desktop', 'vgp-settings.desktop', 'vgp-files.desktop',
     'vgp-monitor.desktop', 'vgp-launcher.desktop', 'vgp-edit.desktop',
-    'vgp-bar.desktop',
+    'vgp-bar.desktop', 'libvgp.pc.in',
   ],
+  exclude_directories : ['metainfo'],
 )
+
+# ============================================================
+# AppStream MetaInfo (for software centres, flatpak catalogs)
+# ============================================================
+
+install_data(
+  'data/metainfo/io.github.theesfeld.vgp.metainfo.xml',
+  'data/metainfo/io.github.theesfeld.vgp.term.metainfo.xml',
+  'data/metainfo/io.github.theesfeld.vgp.edit.metainfo.xml',
+  'data/metainfo/io.github.theesfeld.vgp.files.metainfo.xml',
+  'data/metainfo/io.github.theesfeld.vgp.monitor.metainfo.xml',
+  'data/metainfo/io.github.theesfeld.vgp.settings.metainfo.xml',
+  'data/metainfo/io.github.theesfeld.vgp.launcher.metainfo.xml',
+  'data/metainfo/io.github.theesfeld.vgp.bar.metainfo.xml',
+  install_dir : get_option('datadir') / 'metainfo',
+)
+
+# ============================================================
+# Man pages (generated from scdoc sources when available)
+# ============================================================
+
+scdoc_prog = find_program('scdoc', required : false)
+if scdoc_prog.found()
+  man_pages = {
+    'vgp.1'          : 'man/vgp.1.scd',
+    'vgp-term.1'     : 'man/vgp-term.1.scd',
+    'vgp-edit.1'     : 'man/vgp-edit.1.scd',
+    'vgp-files.1'    : 'man/vgp-files.1.scd',
+    'vgp-launcher.1' : 'man/vgp-launcher.1.scd',
+    'vgp-monitor.1'  : 'man/vgp-monitor.1.scd',
+    'vgp-settings.1' : 'man/vgp-settings.1.scd',
+    'vgp-bar.1'      : 'man/vgp-bar.1.scd',
+    'vgp.conf.5'     : 'man/vgp.conf.5.scd',
+  }
+  foreach page, src : man_pages
+    section = page.split('.')[-1]
+    custom_target(page,
+      input   : src,
+      output  : page,
+      command : [scdoc_prog],
+      feed    : true,
+      capture : true,
+      install : true,
+      install_dir : get_option('mandir') / 'man' + section,
+    )
+  endforeach
+else
+  message('scdoc not found; man pages will not be built')
+endif
+
+# ============================================================
+# Icons (SVG, scalable, hicolor)
+# ============================================================
+
+install_data(
+  'data/icons/hicolor/scalable/apps/vgp.svg',
+  'data/icons/hicolor/scalable/apps/vgp-term.svg',
+  'data/icons/hicolor/scalable/apps/vgp-edit.svg',
+  'data/icons/hicolor/scalable/apps/vgp-files.svg',
+  'data/icons/hicolor/scalable/apps/vgp-launcher.svg',
+  'data/icons/hicolor/scalable/apps/vgp-monitor.svg',
+  'data/icons/hicolor/scalable/apps/vgp-settings.svg',
+  'data/icons/hicolor/scalable/apps/vgp-bar.svg',
+  install_dir : get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps',
+)
+
+# ============================================================
+# Shell completions (bash / zsh / fish)
+# ============================================================
+
+install_data('data/completions/bash/vgp',
+  install_dir : get_option('datadir') / 'bash-completion' / 'completions',
+)
+install_data('data/completions/zsh/_vgp',
+  install_dir : get_option('datadir') / 'zsh' / 'site-functions',
+)
+install_data('data/completions/fish/vgp.fish',
+  install_dir : get_option('datadir') / 'fish' / 'vendor_completions.d',
+)
+
+# ============================================================
+# Default MIME associations
+# ============================================================
+
+install_data('data/mimeapps.list',
+  install_dir : get_option('datadir') / 'applications',
+)
+
+# ============================================================
+# Localization (gettext) -- scaffolding. Strings are marked with
+# _("...") as translations are added; run `meson compile vgp-pot`
+# to regenerate the template.
+# ============================================================
+
+subdir('po')

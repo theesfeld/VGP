@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_TIMER_H
 #define VGP_TIMER_H
 

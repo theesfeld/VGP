@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_RENDER_BACKEND_H
 #define VGP_RENDER_BACKEND_H
 

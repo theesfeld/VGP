@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP Launcher -- SMS (Stores Management System) MFD page.
  * App list as selectable stations; search box is the bore-sight input. */
 

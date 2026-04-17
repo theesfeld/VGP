@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "server.h"
 #include "spawn.h"
 #include "tiling.h"

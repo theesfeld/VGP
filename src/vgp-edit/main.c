@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP Edit -- HUD symbology text editor.
  * Line numbers as altitude tape marks, cursor as a crosshair, HUD-color
  * syntax (white / yellow / red). Status bar in MFD boxed-field format. */

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_CONFIG_WRITER_H
 #define VGP_CONFIG_WRITER_H
 

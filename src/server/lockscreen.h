@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_LOCKSCREEN_H
 #define VGP_LOCKSCREEN_H
 

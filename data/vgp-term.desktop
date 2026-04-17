@@ -1,7 +1,12 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=VGP Terminal
-Comment=Terminal emulator
+GenericName=Terminal Emulator
+Comment=Vector-rendered terminal emulator
 Exec=vgp-term
+Icon=vgp-term
 Terminal=false
-Categories=System;VGP;
+StartupNotify=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;cmd;

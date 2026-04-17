@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_SHADER_LOADER_H
 #define VGP_SHADER_LOADER_H
 

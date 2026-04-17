@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* FBO Glass Pipeline -- scene FBO + downsample chain + per-window
  * glass fragment shader with Fresnel, IOR offset, chromatic aberration.
  *

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "launcher.h"
 #include "vgp/xdg.h"
 

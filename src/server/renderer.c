@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "renderer.h"
 #include "render_backend.h"
 #include "window.h"

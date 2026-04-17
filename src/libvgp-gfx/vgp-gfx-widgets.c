@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP Graphical UI Toolkit -- Widget implementations
  * Immediate-mode widgets: call every frame, return interaction state. */
 

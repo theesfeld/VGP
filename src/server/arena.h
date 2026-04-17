@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_ARENA_H
 #define VGP_ARENA_H
 

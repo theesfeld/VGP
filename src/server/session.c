@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "session.h"
 #include "server.h"
 #include "spawn.h"

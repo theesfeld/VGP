@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP Graphical UI Toolkit -- Core implementation
  * Command buffer management, event handling, lifecycle. */
 

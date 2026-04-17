@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "term.h"
 
 #include <pty.h>

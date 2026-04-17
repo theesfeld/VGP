@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_BACKEND_GPU_INTERNAL_H
 #define VGP_BACKEND_GPU_INTERNAL_H
 

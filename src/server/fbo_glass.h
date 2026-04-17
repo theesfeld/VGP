@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_FBO_GLASS_H
 #define VGP_FBO_GLASS_H
 

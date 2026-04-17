@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP Settings -- Complete configuration GUI
  * Sidebar navigation, every config option present, proper widgets.
  * All vector-rendered. */

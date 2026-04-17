@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_MENU_H
 #define VGP_MENU_H
 

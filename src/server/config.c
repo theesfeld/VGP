@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "config.h"
 #include "vgp/log.h"
 #include "vgp/xdg.h"

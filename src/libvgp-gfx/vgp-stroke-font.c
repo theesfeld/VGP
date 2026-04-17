@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Vector Stroke Font -- F-16 HUD style
  * STRAIGHT SEGMENTS ONLY. No curves. All angular.
  * Grid: 4 wide x 7 tall. Narrow monospace.

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_TILING_H
 #define VGP_TILING_H
 

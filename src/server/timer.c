@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "timer.h"
 #include "vgp/log.h"
 

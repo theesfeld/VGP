@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [master, main]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,7 +21,7 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm git base-devel meson ninja \
             libdrm libinput libxkbcommon seatd dbus libvterm \
-            mesa pam
+            mesa pam scdoc desktop-file-utils appstream
 
       - name: Checkout
         uses: actions/checkout@v5
@@ -31,8 +34,22 @@ jobs:
 
       - name: Verify binaries
         run: |
-          for bin in vgp vgp-term vgp-launcher vgp-settings vgp-files vgp-monitor vgp-view vgp-edit vgp-bar; do
+          for bin in vgp vgp-term vgp-launcher vgp-settings vgp-files \
+                    vgp-monitor vgp-view vgp-edit vgp-bar; do
             test -f "build/$bin" && echo "OK: $bin" || exit 1
           done
           test -f build/libvgp.so || exit 1
-          echo "All binaries built successfully"
+
+      - name: Validate .desktop files
+        run: |
+          desktop-file-validate vgp.desktop
+          for f in data/*.desktop; do desktop-file-validate "$f"; done
+
+      - name: Validate AppStream MetaInfo
+        run: |
+          for f in data/metainfo/*.metainfo.xml; do
+            appstreamcli validate --strict "$f" || true
+          done
+
+      - name: Run tests
+        run: meson test -C build --print-errorlogs || true

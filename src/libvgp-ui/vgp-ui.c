@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "vgp-ui.h"
 
 #include <stdio.h>

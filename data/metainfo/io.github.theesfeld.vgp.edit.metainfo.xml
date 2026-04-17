@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.theesfeld.vgp.edit</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>VGP Edit</name>
+  <summary>Vector-rendered HUD symbology text editor</summary>
+  <description>
+    <p>
+      Minimal text editor for VGP. Line numbers render as an altitude-tape
+      gutter, the cursor is a crosshair, and syntax highlighting uses the
+      HUD white/yellow/red phosphor palette.
+    </p>
+  </description>
+  <launchable type="desktop-id">vgp-edit.desktop</launchable>
+  <url type="homepage">https://github.com/theesfeld/VGP</url>
+  <url type="bugtracker">https://github.com/theesfeld/VGP/issues</url>
+  <developer id="io.github.theesfeld">
+    <name>William Theesfeld</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>Utility</category>
+    <category>TextEditor</category>
+  </categories>
+  <provides>
+    <binary>vgp-edit</binary>
+    <mediatype>text/plain</mediatype>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-04-17" />
+  </releases>
+</component>

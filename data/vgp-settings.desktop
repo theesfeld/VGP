@@ -1,7 +1,12 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=VGP Settings
-Comment=System configuration
+GenericName=Settings
+Comment=Configure the VGP desktop
 Exec=vgp-settings
+Icon=vgp-settings
 Terminal=false
-Categories=Settings;VGP;
+StartupNotify=false
+Categories=Settings;DesktopSettings;
+Keywords=preferences;configuration;options;setup;tweak;

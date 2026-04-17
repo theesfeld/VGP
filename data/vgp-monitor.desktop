@@ -1,7 +1,12 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=VGP Monitor
-Comment=System monitor
+GenericName=System Monitor
+Comment=F-16 engine-page style system monitor
 Exec=vgp-monitor
+Icon=vgp-monitor
 Terminal=false
-Categories=System;VGP;
+StartupNotify=false
+Categories=System;Monitor;
+Keywords=cpu;memory;ram;gpu;network;disk;process;

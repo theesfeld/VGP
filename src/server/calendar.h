@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_CALENDAR_H
 #define VGP_CALENDAR_H
 

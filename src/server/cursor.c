@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "cursor.h"
 
 #define CURSOR_SIZE 16

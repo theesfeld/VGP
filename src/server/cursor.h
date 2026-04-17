@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_CURSOR_H
 #define VGP_CURSOR_H
 

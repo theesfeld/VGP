@@ -1,0 +1,10 @@
+[Default Applications]
+text/plain=vgp-edit.desktop
+text/x-csrc=vgp-edit.desktop
+text/x-chdr=vgp-edit.desktop
+text/x-c++src=vgp-edit.desktop
+text/x-c++hdr=vgp-edit.desktop
+text/x-python=vgp-edit.desktop
+text/x-shellscript=vgp-edit.desktop
+text/markdown=vgp-edit.desktop
+inode/directory=vgp-files.desktop

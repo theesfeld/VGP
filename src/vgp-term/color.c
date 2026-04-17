@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "term.h"
 
 void vgp_term_palette_init(vgp_term_t *term)

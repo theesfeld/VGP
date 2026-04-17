@@ -1,6 +1,9 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=VGP
-Comment=Vector Graphics Protocol - GPU-accelerated display server
+GenericName=Vector Graphics Protocol Session
+Comment=GPU-accelerated vector display server session
 Exec=vgp
 DesktopNames=VGP
+Keywords=wm;window manager;compositor;session;

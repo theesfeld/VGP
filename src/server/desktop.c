@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "desktop.h"
 
 #include <stdio.h>

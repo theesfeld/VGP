@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.theesfeld.vgp.launcher</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>VGP Launcher</name>
+  <summary>SMS-style fuzzy-search application launcher</summary>
+  <description>
+    <p>
+      Fuzzy-search launcher rendered as an F-16 SMS (Stores Management System)
+      page. Finds .desktop entries across XDG data directories and ranks
+      results by match quality and launch frequency.
+    </p>
+  </description>
+  <launchable type="desktop-id">vgp-launcher.desktop</launchable>
+  <url type="homepage">https://github.com/theesfeld/VGP</url>
+  <url type="bugtracker">https://github.com/theesfeld/VGP/issues</url>
+  <developer id="io.github.theesfeld">
+    <name>William Theesfeld</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>System</category>
+  </categories>
+  <provides>
+    <binary>vgp-launcher</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-04-17" />
+  </releases>
+</component>

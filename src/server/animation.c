@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "animation.h"
 #include <string.h>
 #include <math.h>

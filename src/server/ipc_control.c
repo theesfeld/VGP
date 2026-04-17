@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "ipc_control.h"
 #include "server.h"
 #include "spawn.h"

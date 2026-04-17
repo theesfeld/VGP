@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* VGP Files -- DTE (Data Transfer Equipment) MFD page.
  * Directory listing as columned data rows, path boxed at the top,
  * OSB buttons for UP / HOME / ROOT / REFRESH / OPEN. */

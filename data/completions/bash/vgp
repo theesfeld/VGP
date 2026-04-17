@@ -1,0 +1,17 @@
+# bash completion for vgp
+_vgp() {
+    local cur prev words cword
+    _init_completion || return
+
+    case "$prev" in
+        --config)
+            _filedir
+            return
+            ;;
+    esac
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "--config --version -v --help -h" -- "$cur") )
+    fi
+}
+complete -F _vgp vgp

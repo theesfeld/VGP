@@ -1,7 +1,13 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=VGP Bar
-Comment=Standalone scriptable status bar
+GenericName=Status Bar
+Comment=Standalone scriptable HUD status bar
 Exec=vgp-bar
+Icon=vgp-bar
 Terminal=false
-Categories=System;VGP;
+StartupNotify=false
+NoDisplay=true
+Categories=System;
+Keywords=status;bar;hud;indicator;

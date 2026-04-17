@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "server.h"
 #include "spawn.h"
 #include "vgp/log.h"
@@ -28,6 +29,7 @@ static void usage(const char *prog)
 {
     fprintf(stderr, "Usage: %s [OPTIONS]\n", prog);
     fprintf(stderr, "  --config PATH   Config file path (default: $XDG_CONFIG_HOME/vgp/config.toml)\n");
+    fprintf(stderr, "  --version       Print version and exit\n");
     fprintf(stderr, "  --help          Show this help\n");
 }
 
@@ -40,6 +42,10 @@ int main(int argc, char *argv[])
             config_path = argv[++i];
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             usage(argv[0]);
+            return 0;
+        } else if (strcmp(argv[i], "--version") == 0 ||
+                    strcmp(argv[i], "-v") == 0) {
+            printf("vgp %s\n", VGP_VERSION);
             return 0;
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);

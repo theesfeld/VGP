@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.theesfeld.vgp.files</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>VGP Files</name>
+  <summary>Vector-rendered file manager</summary>
+  <description>
+    <p>
+      Compact F-16 DTE-style file manager: rows with TYPE/NAME/SIZE columns,
+      corner-bracket targeting reticule on the selected entry, OSB buttons
+      for navigation.
+    </p>
+  </description>
+  <launchable type="desktop-id">vgp-files.desktop</launchable>
+  <url type="homepage">https://github.com/theesfeld/VGP</url>
+  <url type="bugtracker">https://github.com/theesfeld/VGP/issues</url>
+  <developer id="io.github.theesfeld">
+    <name>William Theesfeld</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>System</category>
+    <category>FileManager</category>
+  </categories>
+  <provides>
+    <binary>vgp-files</binary>
+    <mediatype>inode/directory</mediatype>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-04-17" />
+  </releases>
+</component>

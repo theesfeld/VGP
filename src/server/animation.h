@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_ANIMATION_H
 #define VGP_ANIMATION_H
 

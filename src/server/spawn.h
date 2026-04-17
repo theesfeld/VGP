@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_SPAWN_H
 #define VGP_SPAWN_H
 

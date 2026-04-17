@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_HOTRELOAD_H
 #define VGP_HOTRELOAD_H
 

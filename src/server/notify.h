@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_NOTIFY_H
 #define VGP_NOTIFY_H
 

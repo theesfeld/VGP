@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_DECORATION_H
 #define VGP_DECORATION_H
 

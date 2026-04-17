@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifdef VGP_HAS_GPU_BACKEND
 
 #include "backend_gpu_internal.h"

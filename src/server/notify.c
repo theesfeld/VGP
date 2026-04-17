@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "notify.h"
 #include "render_backend.h"
 #include "vgp/log.h"

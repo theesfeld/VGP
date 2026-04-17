@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "keybind.h"
 #include "server.h"
 #include "lockscreen.h"

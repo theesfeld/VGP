@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_THEME_H
 #define VGP_THEME_H
 

@@ -1,7 +1,13 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=VGP Files
-Comment=File manager
-Exec=vgp-files
+GenericName=File Manager
+Comment=Vector-rendered file manager
+Exec=vgp-files %U
+Icon=vgp-files
 Terminal=false
-Categories=FileManager;VGP;
+StartupNotify=false
+Categories=System;FileManager;
+MimeType=inode/directory;
+Keywords=file;manager;explorer;directory;folder;

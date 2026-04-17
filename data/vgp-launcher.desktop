@@ -1,7 +1,13 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=VGP Launcher
-Comment=Application launcher
+GenericName=Application Launcher
+Comment=Fuzzy-search application launcher
 Exec=vgp-launcher
+Icon=vgp-launcher
 Terminal=false
-Categories=System;VGP;
+StartupNotify=false
+NoDisplay=true
+Categories=System;
+Keywords=run;execute;launch;start;

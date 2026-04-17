@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef VGP_DRM_H
 #define VGP_DRM_H
 

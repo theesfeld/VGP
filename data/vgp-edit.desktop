@@ -1,8 +1,13 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=VGP Edit
-Comment=Text editor
-Exec=vgp-edit %f
+GenericName=Text Editor
+Comment=Vector-rendered text editor
+Exec=vgp-edit %F
+Icon=vgp-edit
 Terminal=false
-Categories=TextEditor;VGP;
-MimeType=text/plain;
+StartupNotify=false
+Categories=Utility;TextEditor;
+MimeType=text/plain;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-python;text/x-shellscript;text/markdown;
+Keywords=editor;text;write;source;code;

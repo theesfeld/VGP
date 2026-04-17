@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "decoration.h"
 
 void vgp_decoration_render(const vgp_window_t *win,
