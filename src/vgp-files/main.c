@@ -1,6 +1,9 @@
-/* VGP Files -- GPU-rendered graphical file manager */
+/* VGP Files -- DTE (Data Transfer Equipment) MFD page.
+ * Directory listing as columned data rows, path boxed at the top,
+ * OSB buttons for UP / HOME / ROOT / REFRESH / OPEN. */
 
 #include "vgp-gfx.h"
+#include "vgp-hud.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,17 +15,17 @@
 #define MAX_FILES 1024
 
 typedef struct {
-    char name[256];
-    bool is_dir;
+    char  name[256];
+    bool  is_dir;
     off_t size;
 } file_entry_t;
 
 static struct {
-    char cwd[1024];
+    char         cwd[1024];
     file_entry_t files[MAX_FILES];
-    int count;
-    int selected;
-    int scroll;
+    int          count;
+    int          selected;
+    int          scroll;
 } fm;
 
 static int cmp_files(const void *a, const void *b)
@@ -75,95 +78,145 @@ static void navigate(const char *name)
 static void format_size(off_t size, char *buf, int buf_sz)
 {
     if (size < 1024) snprintf(buf, buf_sz, "%ld B", (long)size);
-    else if (size < 1024*1024) snprintf(buf, buf_sz, "%.1f KB", (double)size / 1024);
-    else if (size < 1024*1024*1024) snprintf(buf, buf_sz, "%.1f MB", (double)size / (1024*1024));
-    else snprintf(buf, buf_sz, "%.1f GB", (double)size / (1024*1024*1024));
+    else if (size < 1024L*1024) snprintf(buf, buf_sz, "%.1f KB", (double)size / 1024);
+    else if (size < 1024L*1024*1024) snprintf(buf, buf_sz, "%.1f MB", (double)size / (1024*1024));
+    else snprintf(buf, buf_sz, "%.1f GB", (double)size / (1024.0*1024*1024));
 }
 
 static void render(vgfx_ctx_t *ctx)
 {
-    vgfx_clear(ctx, vgfx_theme_color(ctx, VGP_THEME_BG));
-    float p = ctx->theme.padding;
-    float fs = ctx->theme.font_size;
-    float w = ctx->width, h = ctx->height;
+    hud_palette_t P = hud_palette();
+    vgfx_clear(ctx, vgfx_rgba(0, 0, 0, 0));
 
-    /* Path bar */
-    vgfx_rounded_rect(ctx, p, p, w - p*2, 30, 4, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
-    vgfx_text(ctx, fm.cwd, p + 10, p + 20, fs, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    /* OSB layout. Top = nav, Bottom = file ops. */
+    hud_osb_t top_osb[] = {
+        { "UP",      false, true },
+        { "HOME",    false, true },
+        { "ROOT",    false, true },
+        { "REFRESH", false, true },
+    };
+    hud_osb_t bot_osb[] = {
+        { "OPEN",    false, fm.count > 0 },
+        { "COPY",    false, false },
+        { "DEL",     false, false },
+        { "MKDIR",   false, false },
+    };
 
-    /* Column headers */
-    float list_y = p + 40;
-    vgfx_text_bold(ctx, "Name", p + 30, list_y + fs, fs - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
-    vgfx_text_bold(ctx, "Size", w - 120, list_y + fs, fs - 1, vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
-    list_y += fs + 8;
-    vgfx_separator(ctx, p, list_y, w - p*2);
-    list_y += 4;
+    hud_mfd_t mfd = { 0 };
+    mfd.top = top_osb;     mfd.top_count = 4;
+    mfd.bottom = bot_osb;  mfd.bottom_count = 4;
+    mfd.title = "DTE-FILES";
 
-    /* File list */
-    float row_h = fs + 10;
-    int visible = (int)((h - list_y - p) / row_h);
-    if (visible < 1) visible = 1;
+    float cx, cy, cw, ch;
+    hud_mfd_frame(ctx, &mfd, &P, &cx, &cy, &cw, &ch);
+
+    /* Handle OSB clicks */
+    if (mfd.clicked_edge == 1) { /* top */
+        switch (mfd.clicked_index) {
+        case 0: navigate(".."); break;
+        case 1: {
+            const char *home = getenv("HOME");
+            if (home) { snprintf(fm.cwd, sizeof(fm.cwd), "%s", home); scan_dir(); }
+        } break;
+        case 2: snprintf(fm.cwd, sizeof(fm.cwd), "/"); scan_dir(); break;
+        case 3: scan_dir(); break;
+        }
+    }
+    if (mfd.clicked_edge == 3 && mfd.clicked_index == 0 && fm.count > 0) {
+        if (fm.files[fm.selected].is_dir) navigate(fm.files[fm.selected].name);
+    }
+
+    /* --- Path bar: boxed ETCHED "PATH" + projected cwd --- */
+    float fs = 13.0f;
+    float ph = 24.0f;
+    vgfx_rect_outline(ctx, cx, cy, cw, ph, 1.0f, P.dim);
+    hud_etched(ctx, "PATH", cx + 6, cy + ph * 0.5f + fs * 0.35f, fs - 2, &P);
+    vgfx_text_bold(ctx, fm.cwd, cx + 44, cy + ph * 0.5f + fs * 0.35f, fs, P.warn);
+
+    float ly = cy + ph + 8.0f;
+    float lh = ch - ph - 8.0f;
+
+    /* --- Column headers (ETCHED) --- */
+    float hdr_fs = 11.0f;
+    hud_etched_bold(ctx, "T",      cx + 6,                 ly + hdr_fs, hdr_fs, &P);
+    hud_etched_bold(ctx, "NAME",   cx + 28,                ly + hdr_fs, hdr_fs, &P);
+    hud_etched_bold(ctx, "SIZE",   cx + cw - 100,          ly + hdr_fs, hdr_fs, &P);
+    vgfx_line(ctx, cx, ly + hdr_fs + 4, cx + cw, ly + hdr_fs + 4, 1.0f, P.dim);
+
+    ly += hdr_fs + 8.0f;
+    lh -= hdr_fs + 8.0f;
 
     /* Keyboard nav */
     if (ctx->key_pressed) {
-        if (ctx->last_keysym == 0xFF52 && fm.selected > 0) fm.selected--; /* Up */
-        if (ctx->last_keysym == 0xFF54 && fm.selected < fm.count - 1) fm.selected++; /* Down */
-        if (ctx->last_keysym == 0xFF0D && fm.selected < fm.count) { /* Enter */
+        if (ctx->last_keysym == 0xFF52 && fm.selected > 0) fm.selected--;
+        if (ctx->last_keysym == 0xFF54 && fm.selected < fm.count - 1) fm.selected++;
+        if (ctx->last_keysym == 0xFF0D && fm.selected < fm.count) {
             if (fm.files[fm.selected].is_dir) navigate(fm.files[fm.selected].name);
         }
-        if (ctx->last_keysym == 0xFF1B) { navigate(".."); } /* Escape = go up */
+        if (ctx->last_keysym == 0xFF1B) navigate("..");
     }
 
-    /* Scroll to keep selected visible */
+    /* --- Rows --- */
+    float row_h = 20.0f;
+    int visible = (int)(lh / row_h);
+    if (visible < 1) visible = 1;
+
     if (fm.selected < fm.scroll) fm.scroll = fm.selected;
     if (fm.selected >= fm.scroll + visible) fm.scroll = fm.selected - visible + 1;
 
-    vgfx_push_clip(ctx, 0, list_y, w, h - list_y - p);
+    vgfx_push_clip(ctx, cx, ly, cw, lh);
+
     for (int i = fm.scroll; i < fm.count && i < fm.scroll + visible; i++) {
-        float ry = list_y + (float)(i - fm.scroll) * row_h;
+        float ry = ly + (float)(i - fm.scroll) * row_h;
         bool hover = (ctx->mouse_y >= ry && ctx->mouse_y < ry + row_h &&
-                        ctx->mouse_x >= p && ctx->mouse_x < w - p);
+                       ctx->mouse_x >= cx && ctx->mouse_x < cx + cw);
         bool sel = (i == fm.selected);
 
-        if (sel) {
-            vgfx_rounded_rect(ctx, p, ry, w - p*2, row_h, 4,
-                                vgfx_theme_color(ctx, VGP_THEME_ACCENT));
-        } else if (hover) {
-            vgfx_rounded_rect(ctx, p, ry, w - p*2, row_h, 4,
-                                vgfx_theme_color(ctx, VGP_THEME_BG_TERTIARY));
-        }
-
-        if (hover && ctx->mouse_clicked) {
-            if (i == fm.selected && fm.files[i].is_dir) navigate(fm.files[i].name);
-            else fm.selected = i;
-        }
-
-        /* Icon */
-        const char *icon = fm.files[i].is_dir ? "D" : "F";
-        vgfx_color_t icon_c = fm.files[i].is_dir ?
-            vgfx_theme_color(ctx, VGP_THEME_WARNING) : vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY);
-        vgfx_text_bold(ctx, icon, p + 10, ry + row_h * 0.5f + fs * 0.35f, fs, icon_c);
+        /* Type indicator -- etched box */
+        const char *tchar = fm.files[i].is_dir ? "D" : "F";
+        vgfx_color_t tc = fm.files[i].is_dir ? P.warn : P.fg;
+        vgfx_rect_outline(ctx, cx + 4, ry + 2, 16, row_h - 4, 0.8f, P.dim);
+        float tw = vgfx_text_width(ctx, tchar, -1, 11);
+        vgfx_text_bold(ctx, tchar, cx + 4 + (16 - tw) * 0.5f,
+                        ry + row_h * 0.5f + 11 * 0.35f, 11, tc);
 
         /* Name */
-        vgfx_color_t name_c = sel ? vgfx_rgb(1,1,1) : vgfx_theme_color(ctx, VGP_THEME_FG);
-        vgfx_text(ctx, fm.files[i].name, p + 30, ry + row_h * 0.5f + fs * 0.35f, fs, name_c);
+        vgfx_color_t nc = sel ? P.hi : (hover ? P.fg : P.fg);
+        vgfx_text(ctx, fm.files[i].name, cx + 28,
+                   ry + row_h * 0.5f + fs * 0.35f, fs - 1, nc);
 
-        /* Size */
+        /* Size (right-aligned) */
         if (!fm.files[i].is_dir) {
             char sz[32]; format_size(fm.files[i].size, sz, sizeof(sz));
-            vgfx_text(ctx, sz, w - 120, ry + row_h * 0.5f + fs * 0.35f, fs - 1,
-                        sel ? vgfx_rgb(1,1,1) : vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
+            float sw = vgfx_text_width(ctx, sz, -1, fs - 2);
+            vgfx_text(ctx, sz, cx + cw - sw - 8,
+                       ry + row_h * 0.5f + fs * 0.35f, fs - 2, P.dim);
+        }
+
+        if (sel)
+            hud_target_box(ctx, cx + 1, ry + 1, cw - 2, row_h - 2, P.warn);
+
+        if (hover && ctx->mouse_clicked) {
+            if (i == fm.selected && fm.files[i].is_dir)
+                navigate(fm.files[i].name);
+            else fm.selected = i;
         }
     }
     vgfx_pop_clip(ctx);
 
-    /* Scrollbar */
     if (fm.count > visible)
-        vgfx_scrollbar(ctx, w - p - 8, list_y, h - list_y - p, visible, fm.count, &fm.scroll);
+        vgfx_scrollbar(ctx, cx + cw - 6, ly, lh,
+                        visible, fm.count, &fm.scroll);
 
-    /* Status */
-    char status[64]; snprintf(status, sizeof(status), "%d items", fm.count);
-    vgfx_text(ctx, status, p, h - p - 2, fs - 2, vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
+    /* Footer with item count and selection info -- boxed value fields */
+    float foot_y = ly + lh + 2.0f;
+    char items[32]; snprintf(items, sizeof(items), "%d", fm.count);
+    char idx[32];
+    if (fm.count > 0) snprintf(idx, sizeof(idx), "%d/%d", fm.selected + 1, fm.count);
+    else snprintf(idx, sizeof(idx), "--");
+
+    hud_boxed_field(ctx, cx, foot_y, 110, 12, "ITEMS", items, P.fg, &P);
+    hud_boxed_field(ctx, cx + 120, foot_y, 140, 12, "SEL", idx, P.warn, &P);
 }
 
 int main(int argc, char *argv[])
@@ -174,7 +227,7 @@ int main(int argc, char *argv[])
     scan_dir();
 
     vgfx_ctx_t ctx;
-    if (vgfx_init(&ctx, "VGP Files", 750, 500, 0) < 0) return 1;
+    if (vgfx_init(&ctx, "VGP Files", 780, 540, 0) < 0) return 1;
     vgfx_run(&ctx, render);
     vgfx_destroy(&ctx);
     return 0;

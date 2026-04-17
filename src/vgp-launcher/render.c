@@ -1,87 +1,97 @@
+/* VGP Launcher -- SMS (Stores Management System) MFD page.
+ * App list as selectable stations; search box is the bore-sight input. */
+
 #include "launcher.h"
+#include "vgp-hud.h"
+
 #include <stdio.h>
-#include <string.h>
 
 void launcher_render(launcher_t *l)
 {
     vgfx_ctx_t *ctx = &l->ctx;
-    float w = ctx->width, h = ctx->height;
-    float p = ctx->theme.padding;
-    float fs = ctx->theme.font_size;
+    hud_palette_t P = hud_palette();
 
-    /* Background with slight transparency */
-    vgfx_clear(ctx, vgfx_theme_color(ctx, VGP_THEME_BG));
-    vgfx_rounded_rect_outline(ctx, 1, 1, w - 2, h - 2, 10, 2,
-                                vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    vgfx_clear(ctx, vgfx_rgba(0, 0, 0, 0));
 
-    /* Title */
-    vgfx_text_bold(ctx, "VGP Launcher", p + 4, p + fs + 4, fs + 2,
-                     vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    /* MFD frame with no OSBs (single-page selector).
+     * Title: static ETCHED, result count: projected dynamic. */
+    char title[64];
+    snprintf(title, sizeof(title), "SMS-LAUNCHER   %d HITS", l->filtered_count);
 
-    /* Input box */
-    float iy = p * 2 + fs + 12;
-    float ih = ctx->theme.input_height + 4;
-    vgfx_rounded_rect(ctx, p, iy, w - p * 2, ih, 6,
-                        vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
-    vgfx_rounded_rect_outline(ctx, p, iy, w - p * 2, ih, 6, 1,
-                                vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+    hud_mfd_t mfd = { 0 };
+    mfd.title = title;
+    float cx, cy, cw, ch;
+    hud_mfd_frame(ctx, &mfd, &P, &cx, &cy, &cw, &ch);
 
+    /* --- Search input: boxed text field (bore-sight) --- */
+    float ih = 28.0f;
+    float fs = 14.0f;
+    vgfx_rect_outline(ctx, cx, cy, cw, ih, 1.0f, P.warn);
+    /* Small etched prefix */
+    hud_etched(ctx, "QRY", cx + 8, cy + ih * 0.5f + fs * 0.35f, fs - 2, &P);
+    /* Input text (projected) */
+    float qx = cx + 44.0f;
     if (l->input_len > 0) {
-        vgfx_text(ctx, l->input_buf, p + 10, iy + ih * 0.5f + fs * 0.35f, fs,
-                    vgfx_theme_color(ctx, VGP_THEME_FG));
-        /* Cursor */
-        float cw = vgfx_text_width(ctx, l->input_buf, l->input_len, fs);
-        vgfx_rect(ctx, p + 10 + cw + 1, iy + 5, 2, ih - 10,
-                    vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+        vgfx_text_bold(ctx, l->input_buf, qx,
+                        cy + ih * 0.5f + fs * 0.35f, fs, P.hi);
+        float tw = vgfx_text_width(ctx, l->input_buf, l->input_len, fs);
+        /* Caret */
+        vgfx_rect(ctx, qx + tw + 2, cy + 5, 2, ih - 10, P.warn);
     } else {
-        vgfx_text(ctx, "Type to search...", p + 10, iy + ih * 0.5f + fs * 0.35f, fs,
-                    vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
-        vgfx_rect(ctx, p + 10, iy + 5, 2, ih - 10, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
+        hud_etched(ctx, "type to search", qx,
+                    cy + ih * 0.5f + fs * 0.35f, fs - 2, &P);
+        vgfx_rect(ctx, qx, cy + 5, 2, ih - 10, P.warn);
     }
 
-    /* Results list */
-    float ly = iy + ih + p;
-    float item_h = fs + 14;
-    float list_h = h - ly - 30;
-    int visible = (int)(list_h / item_h);
+    /* --- Stations (app list) --- */
+    float ly = cy + ih + 8.0f;
+    float lh = ch - ih - 8.0f;
+    float item_h = 22.0f;
+    int visible = (int)(lh / item_h);
     if (visible < 1) visible = 1;
 
-    /* Scroll to keep selection visible */
+    /* Keep selection in view */
     if (l->selected_index < l->scroll_offset)
         l->scroll_offset = l->selected_index;
     if (l->selected_index >= l->scroll_offset + visible)
         l->scroll_offset = l->selected_index - visible + 1;
 
-    vgfx_push_clip(ctx, p, ly, w - p * 2, list_h);
-    for (int i = l->scroll_offset; i < l->filtered_count && (i - l->scroll_offset) < visible; i++) {
+    vgfx_push_clip(ctx, cx, ly, cw, lh);
+
+    for (int i = l->scroll_offset;
+         i < l->filtered_count && (i - l->scroll_offset) < visible; i++) {
         float ry = ly + (float)(i - l->scroll_offset) * item_h;
         int app_idx = l->filtered[i].app_index;
         launcher_app_t *app = &l->app_list.apps[app_idx];
         bool sel = (i == l->selected_index);
+        bool hover = (ctx->mouse_y >= ry && ctx->mouse_y < ry + item_h &&
+                       ctx->mouse_x >= cx && ctx->mouse_x < cx + cw);
 
-        if (sel) {
-            vgfx_rounded_rect(ctx, p + 2, ry, w - p * 2 - 4, item_h - 2, 6,
-                                vgfx_alpha(vgfx_theme_color(ctx, VGP_THEME_ACCENT), 0.25f));
-            /* Accent bar */
-            vgfx_rounded_rect(ctx, p + 4, ry + 4, 3, item_h - 10, 1.5f,
-                                vgfx_theme_color(ctx, VGP_THEME_ACCENT));
-        }
+        /* Station number -- etched left column */
+        char num[8];
+        snprintf(num, sizeof(num), "%02d", i + 1);
+        hud_etched(ctx, num, cx + 4,
+                    ry + item_h * 0.5f + fs * 0.35f, fs - 2, &P);
 
-        vgfx_color_t text_c = sel ? vgfx_theme_color(ctx, VGP_THEME_FG) :
-                                      vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY);
-        vgfx_text(ctx, app->name, p + 16, ry + item_h * 0.5f + fs * 0.35f, fs, text_c);
+        /* Name (projected) */
+        vgfx_color_t nc = sel ? P.hi : (hover ? P.fg : P.fg);
+        vgfx_text(ctx, app->name, cx + 40,
+                   ry + item_h * 0.5f + fs * 0.35f, fs - 1, nc);
 
-        /* Mouse click */
-        if (ctx->mouse_clicked && ctx->mouse_y >= ry && ctx->mouse_y < ry + item_h &&
-            ctx->mouse_x >= p && ctx->mouse_x < w - p) {
+        /* Selection reticule */
+        if (sel)
+            hud_target_box(ctx, cx + 1, ry + 1, cw - 2, item_h - 2, P.warn);
+
+        if (hover && ctx->mouse_clicked) {
             l->selected_index = i;
             ctx->dirty = true;
         }
     }
+
     vgfx_pop_clip(ctx);
 
-    /* Result count */
-    char count[32];
-    snprintf(count, sizeof(count), "%d results", l->filtered_count);
-    vgfx_text(ctx, count, p, h - 18, fs - 2, vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
+    /* Scrollbar on right edge */
+    if (l->filtered_count > visible)
+        vgfx_scrollbar(ctx, cx + cw - 6, ly, lh,
+                        visible, l->filtered_count, &l->scroll_offset);
 }

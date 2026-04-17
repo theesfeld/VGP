@@ -3,6 +3,7 @@
  * All vector-rendered. */
 
 #include "vgp-gfx.h"
+#include "vgp-hud.h"
 #include "config-writer.h"
 
 #include <stdio.h>
@@ -684,50 +685,55 @@ static void page_about(vgfx_ctx_t *ctx, float y, float x, float w)
 
 static void render(vgfx_ctx_t *ctx)
 {
-    vgfx_clear(ctx, vgfx_theme_color(ctx, VGP_THEME_BG));
+    hud_palette_t HP = hud_palette();
+    vgfx_clear(ctx, vgfx_rgba(0, 0, 0, 0));
 
     float w = ctx->width, h = ctx->height;
 
-    /* Title bar */
-    vgfx_rect(ctx, 0, 0, w, 28, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
-    vgfx_text_bold(ctx, "VGP Settings", P, 19, FS, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
-    if (S.unsaved)
-        vgfx_text(ctx, "[unsaved]", w - 80, 19, FS - 2, vgfx_theme_color(ctx, VGP_THEME_WARNING));
+    /* === DED-STYLE HEADER === */
+    float hdr_h = 22.0f;
+    vgfx_rect(ctx, 0, 0, w, hdr_h, HP.shade);
+    vgfx_line(ctx, 0, hdr_h, w, hdr_h, 1.0f, HP.dim);
+    hud_etched_bold(ctx, "DED-SETTINGS", 10, 15, 12, &HP);
+    if (S.unsaved) {
+        const char *msg = "*UNSAVED*";
+        float tw = vgfx_text_width(ctx, msg, -1, 11);
+        vgfx_text_bold(ctx, msg, w - tw - 10, 15, 11, HP.warn);
+    }
 
-    /* Sidebar */
-    float sb_w = 160;
-    vgfx_rect(ctx, 0, 28, sb_w, h - 28 - 28, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
-    vgfx_line(ctx, sb_w, 28, sb_w, h - 28, 1, vgfx_theme_color(ctx, VGP_THEME_BORDER));
+    /* === LEFT OSB COLUMN (page selection) === */
+    float sb_w = 140.0f;
+    float sb_top = hdr_h + 4.0f;
+    float foot_h = 28.0f;
+    float sb_bot = h - foot_h - 4.0f;
+    float btn_h = (sb_bot - sb_top) / (float)PAGE_COUNT - 2.0f;
+    if (btn_h < 22.0f) btn_h = 22.0f;
 
-    float sy = 36;
     for (int i = 0; i < PAGE_COUNT; i++) {
         bool active = ((int)S.current_page == i);
-        bool hover = (ctx->mouse_x < sb_w && ctx->mouse_y >= sy && ctx->mouse_y < sy + LH);
-
-        if (active) {
-            vgfx_rect(ctx, 0, sy, sb_w, LH, vgfx_theme_color(ctx, VGP_THEME_BG_TERTIARY));
-            vgfx_rect(ctx, 0, sy, 3, LH, vgfx_theme_color(ctx, VGP_THEME_ACCENT));
-        } else if (hover) {
-            vgfx_rect(ctx, 0, sy, sb_w, LH, vgfx_alpha(vgfx_theme_color(ctx, VGP_THEME_BG_TERTIARY), 0.5f));
-        }
-
-        vgfx_color_t fc = active ? vgfx_theme_color(ctx, VGP_THEME_ACCENT) :
-                            (hover ? vgfx_theme_color(ctx, VGP_THEME_FG) :
-                                      vgfx_theme_color(ctx, VGP_THEME_FG_SECONDARY));
-        vgfx_text(ctx, page_labels[i] + 2, 12, sy + LH * 0.5f + FS * 0.35f, FS, fc);
-
-        if (hover && ctx->mouse_clicked) {
+        float by = sb_top + (float)i * (btn_h + 2.0f);
+        hud_osb_t osb = { page_labels[i] + 2, active, true };
+        if (hud_osb_draw(ctx, 4, by, sb_w - 8, btn_h, &osb, &HP)) {
             S.current_page = i;
             S.edit_field = -1;
             ctx->scroll_offset = 0;
         }
-        sy += LH;
     }
 
-    /* Content area */
-    float cx = sb_w + P * 2;
-    float cy = 36;
+    /* === CONTENT FRAME === */
+    float cx = sb_w + P;
+    float cy = sb_top;
     float cw = w - cx - P;
+    float chh = sb_bot - sb_top;
+    vgfx_rect_outline(ctx, cx, cy, cw, chh, 1.0f, HP.dim);
+
+    /* Page title strip */
+    float title_h = 20.0f;
+    vgfx_rect(ctx, cx, cy, cw, title_h, HP.shade);
+    vgfx_line(ctx, cx, cy + title_h, cx + cw, cy + title_h, 1.0f, HP.dim);
+    char ptit[64];
+    snprintf(ptit, sizeof(ptit), "PAGE: %s", page_labels[S.current_page] + 2);
+    hud_etched_bold(ctx, ptit, cx + 10, cy + title_h * 0.5f + 11 * 0.35f, 11, &HP);
 
     typedef void (*page_fn)(vgfx_ctx_t*, float, float, float);
     page_fn pages[] = {
@@ -736,18 +742,34 @@ static void render(vgfx_ctx_t *ctx)
         page_autostart, page_rules, page_lockscreen, page_accessibility,
         page_about,
     };
-    if (S.current_page < PAGE_COUNT) pages[S.current_page](ctx, cy, cx, cw);
+    if (S.current_page < PAGE_COUNT)
+        pages[S.current_page](ctx, cy + title_h + 6, cx + 8, cw - 16);
 
-    /* Bottom bar */
-    vgfx_rect(ctx, 0, h - 28, w, 28, vgfx_theme_color(ctx, VGP_THEME_BG_SECONDARY));
-    if (vgfx_button(ctx, 4, h - 26, 60, 24, "Save"))
-        save_config();
+    /* === BOTTOM OSB ROW === */
+    float fy = h - foot_h + 2.0f;
+    hud_osb_t foot_osb[] = {
+        { "SAVE",   false, S.unsaved },
+        { "RELOAD", false, true },
+        { "QUIT",   false, true },
+    };
+    int fc = 3;
+    float fbw = 110.0f;
+    for (int i = 0; i < fc; i++) {
+        float fbx = 4.0f + (float)i * (fbw + 4.0f);
+        if (hud_osb_draw(ctx, fbx, fy, fbw, foot_h - 6, &foot_osb[i], &HP)) {
+            if (i == 0) save_config();
+            else if (i == 1) load_config();
+            else if (i == 2) ctx->running = false;
+        }
+    }
 
+    /* Status message (right of buttons) */
+    float sx = 4.0f + (float)fc * (fbw + 4.0f) + 8.0f;
     if (S.status_timer > 0) {
-        vgfx_text(ctx, S.status, 74, h - 10, FS - 2, vgfx_theme_color(ctx, VGP_THEME_SUCCESS));
+        vgfx_text(ctx, S.status, sx, h - 10, FS - 2, HP.warn);
         S.status_timer--;
     } else {
-        vgfx_text(ctx, "Esc = close", 74, h - 10, FS - 2, vgfx_theme_color(ctx, VGP_THEME_FG_DISABLED));
+        hud_etched(ctx, "ESC closes window", sx, h - 10, FS - 2, &HP);
     }
 
     if (ctx->key_pressed && ctx->last_keysym == 0xFF1B && ctx->focus_id == 0)
