@@ -296,12 +296,13 @@ jobs:
           generate_release_notes: true
 
   # ==========================================================
-  # AUR push (unchanged from before)
+  # AUR push (best-effort -- skipped if AUR_SSH_PRIVATE_KEY secret
+  # isn't set; failures here don't fail the overall release run).
   # ==========================================================
   aur:
     needs: publish
     runs-on: ubuntu-latest
-    if: ${{ env.AUR_SSH_PRIVATE_KEY != '' }}
+    continue-on-error: true
     env:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
     steps:
@@ -309,12 +310,24 @@ jobs:
         with:
           ref: ${{ env.TAG }}
 
+      - name: Check AUR secret
+        id: aur_secret
+        run: |
+          if [ -n "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AUR_SSH_PRIVATE_KEY secret not set -- skipping AUR publish"
+          fi
+
       - name: Update PKGBUILD version
+        if: ${{ steps.aur_secret.outputs.present == 'true' }}
         run: |
           VERSION="${TAG#v}"
           sed -i "s/pkgver=.*/pkgver=$VERSION/" PKGBUILD
 
       - name: Setup SSH for AUR
+        if: ${{ steps.aur_secret.outputs.present == 'true' }}
         run: |
           mkdir -p ~/.ssh
           echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
@@ -328,6 +341,7 @@ jobs:
           chmod 600 ~/.ssh/config
 
       - name: Publish to AUR
+        if: ${{ steps.aur_secret.outputs.present == 'true' }}
         run: |
           VERSION="${TAG#v}"
           git clone ssh://aur@aur.archlinux.org/vgp-git.git /tmp/aur-pkg
