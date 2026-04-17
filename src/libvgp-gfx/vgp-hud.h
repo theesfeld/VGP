@@ -86,11 +86,88 @@ static inline void hud_etched_bold(vgfx_ctx_t *ctx, const char *s,
     vgfx_text_bold(ctx, s, x,        y, fs, p->etch);
 }
 
+/* ------------------------------------------------------------
+ * Phosphor glow
+ *
+ * CRT/HUD phosphor emission has three optical signatures:
+ *   1. Halation  -- warm halo from light reflected off the glass
+ *                   and scattered through the phosphor layer
+ *   2. Bloom     -- the bright core spills into the near neighbourhood
+ *   3. Core      -- the sharp stroke itself, peak intensity
+ *
+ * Without multi-pass FBO blur we approximate the Gaussian spread by
+ * stacking offset copies at decreasing radii, wide+faint first, then
+ * medium, then the crisp core. Each dynamic element gets ~13 draws
+ * so keep it on dynamic values only; static etched text stays plain.
+ * ------------------------------------------------------------ */
+
+static inline vgfx_color_t hud_phosphor_halo(vgfx_color_t core)
+{
+    /* Halation tint: shift toward warmer wavelengths (red/orange
+     * leak) regardless of the core colour. Real phosphor-on-glass
+     * produces a warm smear around the emission band. */
+    if (core.g > 0.7f && core.b < 0.3f) {
+        /* yellow core -> orange halo */
+        return vgfx_rgba(1.0f, 0.55f, 0.08f, 1.0f);
+    } else if (core.r > 0.8f && core.g < 0.45f) {
+        /* red core -> deep red/orange halo */
+        return vgfx_rgba(1.0f, 0.25f, 0.10f, 1.0f);
+    }
+    /* white core -> warm-white halo */
+    return vgfx_rgba(1.0f, 0.85f, 0.65f, 1.0f);
+}
+
+static inline void hud_phosphor_text(vgfx_ctx_t *ctx, const char *s,
+                                       float x, float y, float fs,
+                                       vgfx_color_t core)
+{
+    vgfx_color_t halo = hud_phosphor_halo(core);
+
+    /* Ring 1: wide halation (8 samples on a ring of radius ~2.4) */
+    const float r1 = 2.4f;
+    const float a1 = 0.14f;
+    vgfx_text(ctx, s, x - r1,       y,            fs, vgfx_alpha(halo, a1));
+    vgfx_text(ctx, s, x + r1,       y,            fs, vgfx_alpha(halo, a1));
+    vgfx_text(ctx, s, x,            y - r1,       fs, vgfx_alpha(halo, a1));
+    vgfx_text(ctx, s, x,            y + r1,       fs, vgfx_alpha(halo, a1));
+    vgfx_text(ctx, s, x - r1*0.7f,  y - r1*0.7f,  fs, vgfx_alpha(halo, a1));
+    vgfx_text(ctx, s, x + r1*0.7f,  y - r1*0.7f,  fs, vgfx_alpha(halo, a1));
+    vgfx_text(ctx, s, x - r1*0.7f,  y + r1*0.7f,  fs, vgfx_alpha(halo, a1));
+    vgfx_text(ctx, s, x + r1*0.7f,  y + r1*0.7f,  fs, vgfx_alpha(halo, a1));
+
+    /* Ring 2: closer bloom in the core colour itself */
+    const float r2 = 1.0f;
+    const float a2 = 0.32f;
+    vgfx_text(ctx, s, x - r2, y,       fs, vgfx_alpha(core, a2));
+    vgfx_text(ctx, s, x + r2, y,       fs, vgfx_alpha(core, a2));
+    vgfx_text(ctx, s, x,       y - r2, fs, vgfx_alpha(core, a2));
+    vgfx_text(ctx, s, x,       y + r2, fs, vgfx_alpha(core, a2));
+
+    /* Core: crisp bright stroke */
+    vgfx_text_bold(ctx, s, x, y, fs, core);
+}
+
+static inline void hud_phosphor_line(vgfx_ctx_t *ctx,
+                                       float x1, float y1,
+                                       float x2, float y2,
+                                       float thickness,
+                                       vgfx_color_t core)
+{
+    vgfx_color_t halo = hud_phosphor_halo(core);
+    /* Wide warm halation */
+    vgfx_line(ctx, x1, y1, x2, y2, thickness * 4.0f, vgfx_alpha(halo, 0.10f));
+    /* Medium bloom in core colour */
+    vgfx_line(ctx, x1, y1, x2, y2, thickness * 2.2f, vgfx_alpha(core, 0.28f));
+    /* Core stroke */
+    vgfx_line(ctx, x1, y1, x2, y2, thickness, core);
+}
+
+/* Projected = dynamic value = phosphor glow */
 static inline void hud_projected(vgfx_ctx_t *ctx, const char *s,
                                    float x, float y, float fs,
                                    vgfx_color_t c)
 {
-    vgfx_text_bold(ctx, s, x, y, fs, c);
+    hud_phosphor_text(ctx, s, x, y, fs, c);
 }
 
 /* ------------------------------------------------------------

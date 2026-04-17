@@ -9,6 +9,7 @@
  */
 
 #include "vgp-gfx.h"
+#include "vgp-hud.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -272,17 +273,18 @@ static void draw_bar_gauge(vgfx_ctx_t *ctx, float x, float y, float w, float h,
     }
 
     /* Current-value pointer: right-pointing caret ">" just outside
-     * the tape, aligned to the current percentage. */
+     * the tape. Phosphor glow on every dynamic stroke. */
     float py = tape_bot - value * tape_h;
     float px = tape_x + tape_w + 2.0f;
-    vgfx_line(ctx, px, py - 5.0f, px + 7.0f, py, 1.4f, col);
-    vgfx_line(ctx, px + 7.0f, py, px, py + 5.0f, 1.4f, col);
-    /* Horizontal mark line across the tape at current value */
-    vgfx_line(ctx, tape_x + 1.0f, py, tape_x + tape_w - 1.0f, py, 1.0f, col);
+    hud_phosphor_line(ctx, px, py - 5.0f, px + 7.0f, py, 1.4f, col);
+    hud_phosphor_line(ctx, px + 7.0f, py, px, py + 5.0f, 1.4f, col);
+    /* Horizontal mark line across the tape at the current value */
+    hud_phosphor_line(ctx, tape_x + 1.0f, py,
+                         tape_x + tape_w - 1.0f, py, 1.0f, col);
 
-    /* Bracketed PROJECTED digital readout beside the pointer */
+    /* Bracketed PROJECTED digital readout -- phosphor glow */
     char val[12]; snprintf(val, sizeof(val), "[%3d]", (int)(value * 100.0f));
-    vgfx_text_bold(ctx, val, px + 12.0f, py + fs * 0.35f, fs, col);
+    hud_phosphor_text(ctx, val, px + 12.0f, py + fs * 0.35f, fs, col);
 }
 
 /* ============================================================
@@ -331,21 +333,20 @@ static void draw_core_strip(vgfx_ctx_t *ctx, float x, float y, float w, float h)
                    vgfx_rgba(0, 0, 0, 0.5f));
         vgfx_text(ctx, idx, cx, cy + cell_fs, cell_fs, C_DIM);
 
-        /* PROJECTED value */
+        /* PROJECTED value -- phosphor glow */
         char val[8]; snprintf(val, sizeof(val), "%3d", (int)(v * 100.0f));
-        vgfx_text_bold(ctx, val, cx + 40.0f, cy + cell_fs, cell_fs, col);
+        hud_phosphor_text(ctx, val, cx + 40.0f, cy + cell_fs, cell_fs, col);
 
-        /* Tiny inline bar (tick indicator) */
+        /* Tiny inline bar: static baseline + dynamic pointer */
         float bar_x = cx + 70.0f;
         float bar_w = cell_w - 80.0f;
         if (bar_w > 10.0f) {
             vgfx_line(ctx, bar_x, cy + cell_fs * 0.65f,
                              bar_x + bar_w, cy + cell_fs * 0.65f,
                              1.0f, C_DIM);
-            /* Mark at current value */
             float mx = bar_x + bar_w * v;
-            vgfx_line(ctx, mx, cy + cell_fs * 0.35f,
-                             mx, cy + cell_fs * 0.95f, 1.4f, col);
+            hud_phosphor_line(ctx, mx, cy + cell_fs * 0.35f,
+                                 mx, cy + cell_fs * 0.95f, 1.4f, col);
         }
     }
 }
@@ -360,14 +361,14 @@ static void draw_field(vgfx_ctx_t *ctx, float x, float y, float label_w,
                          vgfx_color_t value_color)
 {
     float fs = 13.0f;
-    /* ETCHED label with offset shadow */
-    vgfx_text(ctx, label, x + 0.6f, y + fs + 0.6f, fs, vgfx_rgba(0, 0, 0, 0.5f));
+    /* ETCHED label -- static, black */
+    vgfx_text(ctx, label, x + 0.5f, y + fs, fs, vgfx_rgba(1, 1, 1, 0.15f));
     vgfx_text(ctx, label, x, y + fs, fs, C_DIM);
 
-    /* Bracketed PROJECTED value */
+    /* Bracketed PROJECTED value -- phosphor glow */
     char boxed[128];
     snprintf(boxed, sizeof(boxed), "[%s]", value);
-    vgfx_text_bold(ctx, boxed, x + label_w, y + fs, fs, value_color);
+    hud_phosphor_text(ctx, boxed, x + label_w, y + fs, fs, value_color);
 }
 
 /* ============================================================
