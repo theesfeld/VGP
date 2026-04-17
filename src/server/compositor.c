@@ -295,10 +295,25 @@ void vgp_compositor_move_window(vgp_compositor_t *comp,
                                  int32_t x, int32_t y,
                                  const vgp_theme_t *theme)
 {
-    (void)comp;
     win->frame_rect.x = x;
     win->frame_rect.y = y;
     win->content_rect = vgp_window_content_rect(&win->frame_rect, theme);
+
+    /* Re-home the window to whichever output contains its center.
+     * Each output drives one workspace -- without this the window would
+     * keep rendering on its origin output while its coordinates sit on
+     * a neighbour, making it "vanish" mid-drag. */
+    int32_t cx = win->frame_rect.x + win->frame_rect.w / 2;
+    int32_t cy = win->frame_rect.y + win->frame_rect.h / 2;
+    for (int i = 0; i < comp->output_count; i++) {
+        vgp_output_info_t *out = &comp->outputs[i];
+        if (cx >= out->x && cx < out->x + (int32_t)out->width &&
+            cy >= out->y && cy < out->y + (int32_t)out->height) {
+            if (win->workspace != out->workspace)
+                win->workspace = out->workspace;
+            break;
+        }
+    }
 }
 
 void vgp_compositor_resize_window(vgp_compositor_t *comp,
