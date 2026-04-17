@@ -9,7 +9,7 @@
 #include "config.h"
 #include "panel.h"
 #include "vgp-stroke-font.h"
-#include "fbo_compose.h"
+#include "fbo_glass.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
 
@@ -88,7 +88,8 @@ static void render_background(vgp_render_backend_t *b, void *ctx,
 
 static void render_decoration(vgp_render_backend_t *b, void *ctx,
                                const vgp_window_t *win,
-                               const vgp_theme_t *theme, bool focused)
+                               const vgp_theme_t *theme, bool focused,
+                               bool fbo_glass_active)
 {
     if (!win->decorated) return;
 
@@ -114,6 +115,12 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
      *   9. Internal reflection hairline
      *  10. Bottom refraction: dark edge + thin sky-bleed underneath
      */
+
+    /* When the FBO glass shader has already painted the pane (tint,
+     * Fresnel, refraction, top scatter, focus halo), skip all the
+     * line-based glass fakery. Just draw the content plate, title,
+     * and button glyphs on top. */
+    if (!fbo_glass_active) {
 
     /* 1. Outer focus halo -- soft yellow glow for focused windows */
     if (focused) {
@@ -147,7 +154,10 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
     b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
                                tb->r, tb->g, tb->b, tb->a);
 
-    /* 4. Content plate -- dark translucent fill for readability */
+    } /* end !fbo_glass_active for pane layers */
+
+    /* 4. Content plate -- always drawn. Dark translucent fill so the
+     * apps' dynamic content reads against either fake or real glass. */
     const vgp_color_t *cb = &theme->content_bg;
     float inset = 3.0f;
     float content_cr = cr > inset ? cr - inset : 3.0f;
@@ -156,6 +166,8 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
                                content_cr,
                                cb->r, cb->g, cb->b,
                                focused ? cb->a : cb->a * 0.80f);
+
+    if (!fbo_glass_active) {
 
     /* 5. TOP HIGHLIGHT GRADIENT
      *    Real plexi scatters light through its thickness -- brightest
@@ -270,11 +282,19 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
                        x + w - cr * 1.5f, y + h - 2.0f, 0.6f,
                        0.85f, 0.92f, 1.00f, 0.18f);
 
-    /* Titlebar/content separator -- accent hairline */
-    b->ops->draw_line(b, ctx,
-                       x + cr * 0.8f, y + th + 0.5f,
-                       x + w - cr * 0.8f, y + th + 0.5f,
-                       0.5f, bc->r, bc->g, bc->b, edge_a * 0.8f);
+    } /* end !fbo_glass_active for glass-effect layers */
+
+    /* Titlebar/content separator -- always drawn as an accent hairline */
+    {
+        const vgp_color_t *bc_line = focused ? &theme->border_active
+                                              : &theme->border_inactive;
+        float sep_a = focused ? 0.28f : 0.12f;
+        b->ops->draw_line(b, ctx,
+                           x + cr * 0.8f, y + th + 0.5f,
+                           x + w - cr * 0.8f, y + th + 0.5f,
+                           0.5f, bc_line->r, bc_line->g, bc_line->b,
+                           sep_a * 0.8f);
+    }
 
     /* === ETCHED TITLE TEXT ===
      * Static text -- black etching into the glass. A thin white
@@ -934,12 +954,17 @@ int vgp_renderer_init(vgp_renderer_t *renderer, vgp_drm_backend_t *drm,
     }
 #endif
 
-    /* Initialize FBO compositing pipeline for glass effects */
+    /* FBO glass pipeline: one global scene FBO + blur chain + per-window
+     * glass fragment shader. Env VGP_FBO=0 disables at runtime. */
 #ifdef VGP_HAS_GPU_BACKEND
-    if (renderer->backend->type == VGP_BACKEND_GPU) {
-        vgp_gpu_state_t *gs = renderer->backend->priv;
-        if (drm->output_count > 0)
-            vgp_fbo_init(gs, drm->outputs[0].width, drm->outputs[0].height);
+    if (renderer->backend->type == VGP_BACKEND_GPU && drm->output_count > 0) {
+        const char *fbo_off = getenv("VGP_FBO");
+        if (!(fbo_off && fbo_off[0] == '0')) {
+            vgp_gpu_state_t *gs = renderer->backend->priv;
+            if (vgp_fbo_glass_init(gs, drm->outputs[0].width,
+                                      drm->outputs[0].height) < 0)
+                VGP_LOG_WARN(TAG, "FBO glass init failed -- falling back");
+        }
     }
 #endif
 
@@ -951,6 +976,13 @@ int vgp_renderer_init(vgp_renderer_t *renderer, vgp_drm_backend_t *drm,
 void vgp_renderer_destroy(vgp_renderer_t *renderer, vgp_event_loop_t *loop)
 {
     vgp_timer_destroy(&renderer->frame_timer, loop);
+
+#ifdef VGP_HAS_GPU_BACKEND
+    if (renderer->backend && renderer->backend->type == VGP_BACKEND_GPU) {
+        vgp_gpu_state_t *gs = renderer->backend->priv;
+        vgp_fbo_glass_destroy(gs);
+    }
+#endif
 
     if (renderer->backend) {
         renderer->backend->ops->destroy(renderer->backend);
@@ -997,19 +1029,65 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
         out_x = comp->outputs[output_idx].x;
     }
 
-    /* Layer 0: Desktop background (shader or solid color) */
+    /* Layer 0: Desktop background + FBO glass composite */
     float local_mouse_x = comp->cursor.x - (float)out_x;
     float local_mouse_y = comp->cursor.y;
+    bool fbo_glass_run = false;
 #ifdef VGP_HAS_GPU_BACKEND
     if (b->type == VGP_BACKEND_GPU) {
         vgp_gpu_state_t *gs = b->priv;
         vgp_shader_mgr_t *smgr = gs->shader_mgr;
         if (smgr) vgp_shader_mgr_tick(smgr, 0.016f);
+
+        if (vgp_fbo_glass_enabled(gs) && smgr &&
+            renderer->shader_background >= 0) {
+            /* Collect window rects visible on this workspace */
+            vgp_glass_rect_t grects[VGP_MAX_WINDOWS];
+            int gcount = 0;
+            for (int i = 0; i < comp->window_count &&
+                   gcount < VGP_MAX_WINDOWS; i++) {
+                vgp_window_t *w = comp->z_order[i];
+                if (!w->visible || w->state == VGP_WIN_MINIMIZED) continue;
+                if (w->workspace != workspace) continue;
+                grects[gcount].x = w->frame_rect.x - out_x;
+                grects[gcount].y = w->frame_rect.y;
+                grects[gcount].w = w->frame_rect.w;
+                grects[gcount].h = w->frame_rect.h;
+                grects[gcount].corner_radius = theme->corner_radius;
+                grects[gcount].focused = (w == comp->focused);
+                gcount++;
+            }
+
+            /* Resolve the background shader program */
+            vgp_shader_t *bg = &smgr->shaders[renderer->shader_background];
+            GLuint prog = bg->loaded ? bg->program : 0;
+            if (prog) {
+                nvgEndFrame(ctx);
+                vgp_fbo_glass_composite(
+                    gs, prog, smgr->time,
+                    output->width, output->height,
+                    grects, gcount,
+                    theme->titlebar_active.r,
+                    theme->titlebar_active.g,
+                    theme->titlebar_active.b,
+                    theme->titlebar_active.a,
+                    theme->border_active.r,
+                    theme->border_active.g,
+                    theme->border_active.b);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                nvgBeginFrame(ctx, (float)output->width,
+                                (float)output->height, 1.0f);
+                fbo_glass_run = true;
+            }
+        }
     }
 #endif
-    render_background(b, ctx, theme, output->width, output->height,
-                       renderer, local_mouse_x, local_mouse_y,
-                       comp, workspace, out_x);
+    if (!fbo_glass_run) {
+        render_background(b, ctx, theme, output->width, output->height,
+                           renderer, local_mouse_x, local_mouse_y,
+                           comp, workspace, out_x);
+    }
 
     /* Workspace slide animation offset */
     float ws_slide_offset = 0.0f;
@@ -1056,7 +1134,8 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
                 (float)er.w, (float)er.h,
                 theme->corner_radius, 0, 0, 0, 0.2f);
 
-            render_decoration(b, ctx, &tmp_exp, theme, win == comp->focused);
+            render_decoration(b, ctx, &tmp_exp, theme, win == comp->focused,
+                                fbo_glass_run);
             render_window_content(b, ctx, win, out_x);
             continue;
         }
@@ -1119,7 +1198,8 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
 
         /* Render with opacity */
         b->ops->push_state(b, ctx);
-        render_decoration(b, ctx, &tmp, theme, win == comp->focused);
+        render_decoration(b, ctx, &tmp, theme, win == comp->focused,
+                            fbo_glass_run);
         render_window_content(b, ctx, win, out_x);
 
         /* Accessibility: bright focus indicator ring (outline only) */

@@ -41,15 +41,18 @@ typedef struct vgp_gpu_state {
     /* Shader effects manager */
     void              *shader_mgr;  /* vgp_shader_mgr_t* (avoid circular include) */
 
-    /* FBO compositing pipeline */
-    GLuint             fbo;           /* framebuffer object for scene capture */
-    GLuint             fbo_texture;   /* color attachment (scene rendered here) */
-    GLuint             fbo_depth;     /* depth/stencil renderbuffer */
-    GLuint             blur_program;  /* gaussian blur shader program */
-    GLuint             blur_vao;
-    GLuint             blur_vbo;
-    uint32_t           fbo_width, fbo_height; /* current FBO dimensions */
-    bool               fbo_initialized;
+    /* FBO glass pipeline */
+    GLuint    scene_fbo,  scene_tex;   /* full-res scene render target */
+    GLuint    blur_h_fbo, blur_h_tex;  /* half-res downsample */
+    GLuint    blur_q_fbo, blur_q_tex;  /* quarter-res downsample */
+    uint32_t  scene_w,  scene_h;
+    uint32_t  blur_hw, blur_hh;
+    uint32_t  blur_qw, blur_qh;
+    GLuint    gl_prog_passthrough;
+    GLuint    gl_prog_downsample;
+    GLuint    gl_prog_glass;
+    GLuint    gl_quad_vao, gl_quad_vbo;
+    bool      fbo_enabled;             /* true once FBOs are ready */
 } vgp_gpu_state_t;
 
 #endif /* VGP_HAS_GPU_BACKEND */
