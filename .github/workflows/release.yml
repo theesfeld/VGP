@@ -260,25 +260,23 @@ jobs:
               echo
             fi
 
-            cat <<'FOOTER'
-## Artifacts
-
-- `vgp-<version>.tar.gz` — source tarball
-- `vgp-<version>-arch-x86_64.tar.gz` — Arch-compatible prefix tree
-- `vgp_<version>_amd64.deb` + `libvgp0_<version>_amd64.deb` + `libvgp-dev_<version>_amd64.deb` — Debian / Ubuntu
-- `vgp-<version>-1.fc*.x86_64.rpm` + `vgp-libs-<version>-*.rpm` + `vgp-devel-<version>-*.rpm` — Fedora / RHEL / openSUSE
-- `SHA256SUMS` — SHA-256 checksums for every artifact
-
-## Install
-
-**Arch / CachyOS** — `yay -S vgp-git`
-**Debian / Ubuntu** — `sudo apt install ./vgp_*.deb ./libvgp0_*.deb`
-**Fedora / RHEL** — `sudo dnf install ./vgp-*.rpm ./vgp-libs-*.rpm`
-**openSUSE** — `sudo zypper install ./vgp-*.rpm ./vgp-libs-*.rpm`
-**Source** — `tar xf vgp-*.tar.gz && cd vgp-* && meson setup build && sudo meson install -C build`
-
-Verify with the shipped checksums: `sha256sum -c SHA256SUMS --ignore-missing`.
-FOOTER
+            echo "## Artifacts"
+            echo
+            echo "- \`vgp-<version>.tar.gz\` — source tarball"
+            echo "- \`vgp-<version>-arch-x86_64.tar.gz\` — Arch-compatible prefix tree"
+            echo "- \`vgp_<version>_amd64.deb\` + \`libvgp0_<version>_amd64.deb\` + \`libvgp-dev_<version>_amd64.deb\` — Debian / Ubuntu"
+            echo "- \`vgp-<version>-1.fc*.x86_64.rpm\` + \`vgp-libs-<version>-*.rpm\` + \`vgp-devel-<version>-*.rpm\` — Fedora / RHEL / openSUSE"
+            echo "- \`SHA256SUMS\` — SHA-256 checksums for every artifact"
+            echo
+            echo "## Install"
+            echo
+            echo "**Arch / CachyOS** — \`yay -S vgp-git\`"
+            echo "**Debian / Ubuntu** — \`sudo apt install ./vgp_*.deb ./libvgp0_*.deb\`"
+            echo "**Fedora / RHEL** — \`sudo dnf install ./vgp-*.rpm ./vgp-libs-*.rpm\`"
+            echo "**openSUSE** — \`sudo zypper install ./vgp-*.rpm ./vgp-libs-*.rpm\`"
+            echo "**Source** — \`tar xf vgp-*.tar.gz && cd vgp-* && meson setup build && sudo meson install -C build\`"
+            echo
+            echo "Verify with the shipped checksums: \`sha256sum -c SHA256SUMS --ignore-missing\`."
           } > release-body.md
 
           echo "body_path=release-body.md" >> "$GITHUB_OUTPUT"
