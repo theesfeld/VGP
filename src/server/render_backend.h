@@ -10,7 +10,6 @@
 struct vgp_drm_output;
 
 typedef enum {
-    VGP_BACKEND_CPU,
     VGP_BACKEND_GPU,
 } vgp_backend_type_t;
 
@@ -34,8 +33,7 @@ typedef struct vgp_render_ops {
                         struct vgp_drm_output *output);
     void (*output_destroy)(vgp_render_backend_t *b, int idx);
 
-    /* Frame lifecycle -- begin returns a backend-specific context pointer
-     * (plutovg_canvas_t* for CPU, or NULL for GPU which uses GL state) */
+    /* Frame lifecycle -- begin returns a NanoVG context pointer. */
     void *(*begin_frame)(vgp_render_backend_t *b, int output_idx,
                          struct vgp_drm_output *output);
     void  (*end_frame)(vgp_render_backend_t *b, int output_idx,
@@ -72,7 +70,7 @@ typedef struct vgp_render_ops {
                          float dx, float dy, float dw, float dh,
                          float alpha);
 
-    /* Shader-driven rectangle (GPU only, no-op on CPU) */
+    /* Shader-driven rectangle */
     void (*draw_shader_rect)(vgp_render_backend_t *b, void *ctx,
                              int shader_id,
                              float x, float y, float w, float h,
@@ -97,9 +95,7 @@ struct vgp_render_backend {
     void                   *priv;
 };
 
-/* Backend constructors */
-vgp_render_backend_t *vgp_cpu_backend_create(void);
-
+/* Backend constructor (GPU only) */
 #ifdef VGP_HAS_GPU_BACKEND
 vgp_render_backend_t *vgp_gpu_backend_create(void);
 bool vgp_gpu_backend_available(int drm_fd);

@@ -4,7 +4,7 @@
 
 #include "vgp/types.h"
 #include "theme.h"
-#include <plutovg.h>
+#include <stdint.h>
 
 typedef uint32_t vgp_window_id_t;
 
@@ -42,8 +42,10 @@ typedef struct vgp_window {
     vgp_rect_t         content_rect;
     vgp_rect_t         saved_rect;   /* pre-maximize geometry */
 
-    /* Client surface */
-    plutovg_surface_t *client_surface;
+    /* Client pixel surface (BGRA, packed, stride = width*4).
+     * Only used by the image viewer and other raster-submitting apps;
+     * most clients send cell grids or draw commands instead. */
+    uint8_t           *client_pixels;
     uint32_t           client_width;
     uint32_t           client_height;
 

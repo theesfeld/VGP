@@ -3,7 +3,6 @@
 #define VGP_CURSOR_H
 
 #include "vgp/types.h"
-#include <plutovg.h>
 #include <stdbool.h>
 
 typedef enum {
@@ -34,7 +33,6 @@ void vgp_cursor_init(vgp_cursor_t *cursor);
 void vgp_cursor_move(vgp_cursor_t *cursor, float dx, float dy,
                       uint32_t screen_w, uint32_t screen_h);
 void vgp_cursor_set_position(vgp_cursor_t *cursor, float x, float y);
-void vgp_cursor_render(vgp_cursor_t *cursor, plutovg_canvas_t *canvas);
 
 /* Get damage rects for cursor movement (old + new positions) */
 void vgp_cursor_get_damage(vgp_cursor_t *cursor,

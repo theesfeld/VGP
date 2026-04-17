@@ -228,16 +228,10 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
     /* 4. DRM/KMS backend */
     server->drm.seat = server->seat.initialized ? &server->seat : NULL;
 
-    /* Always try GPU first -- skip dumb buffers if GPU backend is compiled in */
-    {
+    /* GPU-only path -- skip dumb buffers, GBM handles the framebuffers. */
 #ifdef VGP_HAS_GPU_BACKEND
-        const char *force_cpu = getenv("VGP_CPU");
-        if (!(force_cpu && force_cpu[0] == '1')) {
-            server->drm.skip_dumb_buffers = true;
-            VGP_LOG_INFO(TAG, "GPU backend available, skipping dumb buffers");
-        }
+    server->drm.skip_dumb_buffers = true;
 #endif
-    }
     if (vgp_drm_backend_init(&server->drm, &server->loop) < 0)
         goto err_seat;
 
@@ -1065,18 +1059,16 @@ void vgp_server_handle_message(vgp_server_t *server,
                               win_id, w, h, stride);
 
                 if (win->client_width != w || win->client_height != h) {
-                    if (win->client_surface)
-                        plutovg_surface_destroy(win->client_surface);
-                    win->client_surface = plutovg_surface_create((int)w, (int)h);
+                    free(win->client_pixels);
+                    win->client_pixels = malloc((size_t)w * (size_t)h * 4);
                     win->client_width = w;
                     win->client_height = h;
                 }
 
-                if (win->client_surface) {
-                    uint8_t *dst = plutovg_surface_get_data(win->client_surface);
-                    int dst_stride = plutovg_surface_get_stride(win->client_surface);
+                if (win->client_pixels) {
+                    uint32_t dst_stride = w * 4;
                     for (uint32_t row = 0; row < h; row++) {
-                        memcpy(dst + row * dst_stride,
+                        memcpy(win->client_pixels + row * dst_stride,
                                pixel_data + row * stride,
                                w * 4);
                     }

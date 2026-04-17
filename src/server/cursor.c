@@ -41,39 +41,6 @@ void vgp_cursor_set_position(vgp_cursor_t *cursor, float x, float y)
     cursor->moved = true;
 }
 
-void vgp_cursor_render(vgp_cursor_t *cursor, plutovg_canvas_t *canvas)
-{
-    if (!cursor->visible)
-        return;
-
-    float x = cursor->x;
-    float y = cursor->y;
-
-    /* Draw an arrow cursor as a vector path */
-    plutovg_canvas_save(canvas);
-
-    /* Arrow outline (black) */
-    plutovg_canvas_move_to(canvas, x, y);
-    plutovg_canvas_line_to(canvas, x, y + CURSOR_SIZE);
-    plutovg_canvas_line_to(canvas, x + 4, y + CURSOR_SIZE - 4);
-    plutovg_canvas_line_to(canvas, x + 7, y + CURSOR_SIZE + 2);
-    plutovg_canvas_line_to(canvas, x + 9, y + CURSOR_SIZE);
-    plutovg_canvas_line_to(canvas, x + 6, y + CURSOR_SIZE - 5);
-    plutovg_canvas_line_to(canvas, x + CURSOR_SIZE - 4, y + CURSOR_SIZE - 5);
-    plutovg_canvas_close_path(canvas);
-
-    plutovg_canvas_set_rgb(canvas, 0, 0, 0);
-    plutovg_canvas_set_line_width(canvas, 1.5f);
-    plutovg_canvas_stroke_preserve(canvas);
-
-    /* Arrow fill (white) */
-    plutovg_canvas_set_rgb(canvas, 1, 1, 1);
-    plutovg_canvas_fill(canvas);
-
-    plutovg_canvas_restore(canvas);
-    cursor->moved = false;
-}
-
 void vgp_cursor_get_damage(vgp_cursor_t *cursor,
                             vgp_rect_t *old_rect, vgp_rect_t *new_rect)
 {

@@ -15,8 +15,6 @@
 #include "vgp/protocol.h"
 #include "vgp/xdg.h"
 
-#include <plutovg.h>
-
 #ifdef VGP_HAS_GPU_BACKEND
 #include "nanovg.h"
 #include "backend_gpu_internal.h"
@@ -665,39 +663,21 @@ static void render_window_content(vgp_render_backend_t *b, void *ctx,
         return;
     }
 
-    /* Legacy pixel surface fallback */
-    if (!win->client_surface) return;
+    /* Pixel surface (image viewer / raster-submitting clients) */
+    if (!win->client_pixels) return;
 
-    const vgp_rect_t *c = &content;
-
-    if (b->type == VGP_BACKEND_CPU) {
-        plutovg_canvas_t *canvas = ctx;
-        plutovg_canvas_save(canvas);
-        plutovg_canvas_rect(canvas, (float)c->x, (float)c->y,
-                             (float)c->w, (float)c->h);
-        plutovg_canvas_clip(canvas);
-        plutovg_matrix_t mat;
-        plutovg_matrix_init_translate(&mat, -(float)c->x, -(float)c->y);
-        plutovg_canvas_set_texture(canvas, win->client_surface,
-                                    PLUTOVG_TEXTURE_TYPE_PLAIN, 1.0f, &mat);
-        plutovg_canvas_rect(canvas, (float)c->x, (float)c->y,
-                             (float)c->w, (float)c->h);
-        plutovg_canvas_fill(canvas);
-        plutovg_canvas_restore(canvas);
-    }
 #ifdef VGP_HAS_GPU_BACKEND
-    else {
+    {
+        const vgp_rect_t *c = &content;
         int iw = (int)win->client_width;
         int ih = (int)win->client_height;
-        uint8_t *src = plutovg_surface_get_data(win->client_surface);
-        int src_stride = plutovg_surface_get_stride(win->client_surface);
         NVGcontext *vg = ctx;
 
-        /* BGRA -> RGBA swizzle into temp buffer */
+        /* BGRA -> RGBA swizzle into temp buffer for NanoVG upload */
         uint8_t *rgba = malloc((size_t)iw * (size_t)ih * 4);
         if (!rgba) return;
         for (int row = 0; row < ih; row++) {
-            uint32_t *sp = (uint32_t *)(src + row * src_stride);
+            uint32_t *sp = (uint32_t *)(win->client_pixels + row * iw * 4);
             uint32_t *dp = (uint32_t *)(rgba + row * iw * 4);
             for (int px = 0; px < iw; px++) {
                 uint32_t p = sp[px];
@@ -733,26 +713,9 @@ static void render_window_content(vgp_render_backend_t *b, void *ctx,
             nvgFill(vg);
         }
     }
+#else
+    (void)ctx;
 #endif
-}
-
-static void render_cursor_cpu(plutovg_canvas_t *c, float x, float y)
-{
-    plutovg_canvas_save(c);
-    plutovg_canvas_move_to(c, x, y);
-    plutovg_canvas_line_to(c, x, y + 16);
-    plutovg_canvas_line_to(c, x + 4, y + 12);
-    plutovg_canvas_line_to(c, x + 7, y + 18);
-    plutovg_canvas_line_to(c, x + 9, y + 16);
-    plutovg_canvas_line_to(c, x + 6, y + 11);
-    plutovg_canvas_line_to(c, x + 12, y + 11);
-    plutovg_canvas_close_path(c);
-    plutovg_canvas_set_rgb(c, 0, 0, 0);
-    plutovg_canvas_set_line_width(c, 1.5f);
-    plutovg_canvas_stroke_preserve(c);
-    plutovg_canvas_set_rgb(c, 1, 1, 1);
-    plutovg_canvas_fill(c);
-    plutovg_canvas_restore(c);
 }
 
 static void render_cursor(vgp_render_backend_t *b, void *ctx,
@@ -762,10 +725,7 @@ static void render_cursor(vgp_render_backend_t *b, void *ctx,
 
     float x = cursor->x, y = cursor->y;
 
-    if (b->type == VGP_BACKEND_CPU) {
-        render_cursor_cpu(ctx, x, y);
-    } else {
-        /* GPU: draw cursor shape based on context */
+    {
         b->ops->push_state(b, ctx);
 
         switch (cursor->shape) {
@@ -857,37 +817,25 @@ int vgp_renderer_init(vgp_renderer_t *renderer, vgp_drm_backend_t *drm,
 {
     memset(renderer, 0, sizeof(*renderer));
 
-    /* Try GPU first, fall back to CPU. Set VGP_CPU=1 to force CPU. */
-    const char *force_cpu = getenv("VGP_CPU");
-    bool try_gpu = !(force_cpu && force_cpu[0] == '1');
-
+    /* GPU-only. VGP requires GLES3 via GBM/EGL -- no CPU fallback. */
 #ifdef VGP_HAS_GPU_BACKEND
-    if (try_gpu && vgp_gpu_backend_available(drm->drm_fd)) {
-        renderer->backend = vgp_gpu_backend_create();
-        if (renderer->backend) {
-            if (renderer->backend->ops->init(renderer->backend, drm->drm_fd) < 0) {
-                VGP_LOG_WARN(TAG, "GPU backend init failed, falling back to CPU");
-                free(renderer->backend);
-                renderer->backend = NULL;
-            } else {
-                VGP_LOG_INFO(TAG, "using GPU backend");
-            }
-        }
-    } else if (try_gpu) {
-        VGP_LOG_INFO(TAG, "GPU not available, using CPU backend");
+    if (!vgp_gpu_backend_available(drm->drm_fd)) {
+        VGP_LOG_ERROR(TAG, "GPU backend not available (no GBM/EGL/GLES3)");
+        return -1;
     }
+    renderer->backend = vgp_gpu_backend_create();
+    if (!renderer->backend ||
+        renderer->backend->ops->init(renderer->backend, drm->drm_fd) < 0) {
+        VGP_LOG_ERROR(TAG, "GPU backend init failed");
+        free(renderer->backend);
+        renderer->backend = NULL;
+        return -1;
+    }
+    VGP_LOG_INFO(TAG, "GPU backend ready");
 #else
-    (void)try_gpu;
+    VGP_LOG_ERROR(TAG, "vgp built without GPU backend support");
+    return -1;
 #endif
-
-    if (!renderer->backend) {
-        renderer->backend = vgp_cpu_backend_create();
-        if (!renderer->backend || renderer->backend->ops->init(renderer->backend, drm->drm_fd) < 0) {
-            VGP_LOG_ERROR(TAG, "CPU backend init failed");
-            return -1;
-        }
-        VGP_LOG_INFO(TAG, "using CPU backend");
-    }
 
     /* Init output surfaces */
     for (int i = 0; i < drm->output_count; i++) {

@@ -21,10 +21,8 @@ void vgp_compositor_destroy(vgp_compositor_t *comp)
 {
     for (int i = 0; i < VGP_MAX_WINDOWS; i++) {
         if (comp->windows[i].used) {
-            if (comp->windows[i].client_surface) {
-                plutovg_surface_destroy(comp->windows[i].client_surface);
-                comp->windows[i].client_surface = NULL;
-            }
+            free(comp->windows[i].client_pixels);
+            comp->windows[i].client_pixels = NULL;
         }
     }
     comp->window_count = 0;
@@ -167,10 +165,8 @@ void vgp_compositor_destroy_window(vgp_compositor_t *comp,
         comp->grab.target = NULL;
     }
 
-    if (win->client_surface) {
-        plutovg_surface_destroy(win->client_surface);
-        win->client_surface = NULL;
-    }
+    free(win->client_pixels);
+    win->client_pixels = NULL;
     free(win->cellgrid);
     win->cellgrid = NULL;
     win->has_cellgrid = false;

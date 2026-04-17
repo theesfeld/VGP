@@ -45,10 +45,6 @@ dep_dbus  = dependency('dbus-1', required : false)
 dep_seat  = dependency('libseat')
 dep_pam   = cc.find_library('pam')
 
-# plutovg as a subproject
-plutovg_proj = subproject('plutovg')
-dep_plutovg  = plutovg_proj.get_variable('plutovg_dep')
-
 # libvterm (for terminal emulator)
 dep_vterm = dependency('vterm', required : false)
 
@@ -97,8 +93,6 @@ vgp_server_sources = files(
   'src/server/renderer.c',
   'src/server/compositor.c',
   'src/server/window.c',
-  'src/server/decoration.c',
-  'src/server/desktop.c',
   'src/server/theme.c',
   'src/server/ipc.c',
   'src/server/config.c',
@@ -115,7 +109,6 @@ vgp_server_sources = files(
   'src/server/power.c',
   'src/server/hotreload.c',
   'src/server/calendar.c',
-  'src/server/backend_cpu.c',
   'src/server/arena.c',
   'src/server/pool.c',
   'src/server/panel.c',
@@ -146,7 +139,6 @@ executable('vgp',
     dep_input,
     dep_udev,
     dep_xkb,
-    dep_plutovg,
     dep_math,
     dep_dl,
     dep_dbus,
