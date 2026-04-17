@@ -5,13 +5,17 @@
 VGP is a purpose-built display server for a specific use case: GPU-accelerated vector rendering of terminal/TUI applications. X11 and Wayland are general-purpose protocols designed for raster (pixel-based) GUI applications. VGP's protocol sends vector draw commands (cell grids with characters and colors), not pixel buffers. This architectural difference enables:
 
 - **Always-crisp text** at any window size (no bitmap scaling)
-- **70x less IPC data** for terminal content (23KB vs 1.6MB per frame)
+- **70× less IPC data** for terminal content (23 KB vs 1.6 MB per frame)
 - **Custom GLSL shaders** on every UI element
-- **Simpler, smaller codebase** (~14,000 lines of C)
+- **Compact C17 codebase** — roughly 40 k SLOC
 
 ## Can I run Firefox / Chrome / GUI apps?
 
-Not currently. VGP has its own protocol that GUI apps don't speak. TUI/CLI programs work perfectly inside `vgp-term`. XWayland support is planned for the future, which would enable X11 apps to run inside VGP windows.
+Not currently. VGP has its own protocol (`libvgp`) that external GUI
+applications don't speak. TUI / CLI programs run inside `vgp-term` just
+like any other terminal. There is no X11 or Wayland bridge in the tree
+today; an XWayland-style shim could be built against the `libvgp`
+draw-command channel but none exists.
 
 ## What GPU do I need?
 
