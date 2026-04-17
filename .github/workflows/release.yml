@@ -172,6 +172,10 @@ jobs:
     needs: [source, arch, deb, rpm]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
@@ -185,37 +189,96 @@ jobs:
           (cd release && sha256sum * > SHA256SUMS)
           ls -la release
 
+      # ------------------------------------------------------
+      # Assemble the release body:
+      #   1. Human highlights extracted from CHANGELOG.md
+      #      (section heading matching the tag).
+      #   2. Raw git log since the previous tag -- catches every
+      #      commit including direct-to-master pushes that the
+      #      PR-based auto-generator misses. Each line is
+      #      "subject (shortSHA) — author".
+      #   3. Install / artifacts footer.
+      # Plus GitHub's native generate_release_notes=true renders
+      # its own "What's Changed" section (PR-based with @author
+      # attribution) and a "New Contributors" footer.
+      # ------------------------------------------------------
+      - name: Build release body
+        id: body
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VERSION="${TAG#v}"
+          PREV_TAG="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          RANGE="${PREV_TAG:+${PREV_TAG}..}${TAG}"
+          COMPARE_URL="${PREV_TAG:+https://github.com/${REPO}/compare/${PREV_TAG}...${TAG}}"
+
+          # --- 1. CHANGELOG excerpt for this version (best effort)
+          HIGHLIGHTS=""
+          if [ -f CHANGELOG.md ]; then
+            HIGHLIGHTS=$(awk -v ver="${VERSION}" '
+              $0 ~ "^## \\[" ver "\\]" { flag = 1; next }
+              flag && $0 ~ "^## "      { exit }
+              flag                     { print }
+            ' CHANGELOG.md)
+          fi
+
+          # --- 2. Full git log since previous tag
+          COMMITS=$(git log --pretty='- %s ([`%h`](https://github.com/'"${REPO}"'/commit/%H)) — @%aN' "$RANGE")
+
+          {
+            if [ -n "$HIGHLIGHTS" ]; then
+              echo "## Highlights"
+              echo
+              echo "$HIGHLIGHTS"
+              echo
+            fi
+
+            echo "## Commits"
+            echo
+            if [ -n "$COMMITS" ]; then
+              echo "$COMMITS"
+            else
+              echo "_No commits since the last tag._"
+            fi
+            echo
+
+            if [ -n "$COMPARE_URL" ]; then
+              echo "**Full diff:** $COMPARE_URL"
+              echo
+            fi
+
+            cat <<'FOOTER'
+## Artifacts
+
+- `vgp-<version>.tar.gz` — source tarball
+- `vgp-<version>-arch-x86_64.tar.gz` — Arch-compatible prefix tree
+- `vgp_<version>_amd64.deb` + `libvgp0_<version>_amd64.deb` + `libvgp-dev_<version>_amd64.deb` — Debian / Ubuntu
+- `vgp-<version>-1.fc*.x86_64.rpm` + `vgp-libs-<version>-*.rpm` + `vgp-devel-<version>-*.rpm` — Fedora / RHEL / openSUSE
+- `SHA256SUMS` — SHA-256 checksums for every artifact
+
+## Install
+
+**Arch / CachyOS** — `yay -S vgp-git`
+**Debian / Ubuntu** — `sudo apt install ./vgp_*.deb ./libvgp0_*.deb`
+**Fedora / RHEL** — `sudo dnf install ./vgp-*.rpm ./vgp-libs-*.rpm`
+**openSUSE** — `sudo zypper install ./vgp-*.rpm ./vgp-libs-*.rpm`
+**Source** — `tar xf vgp-*.tar.gz && cd vgp-* && meson setup build && sudo meson install -C build`
+
+Verify with the shipped checksums: `sha256sum -c SHA256SUMS --ignore-missing`.
+FOOTER
+          } > release-body.md
+
+          echo "body_path=release-body.md" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: release/*
+          body_path: ${{ steps.body.outputs.body_path }}
+          append_body: true
           generate_release_notes: true
-          body: |
-            ## VGP ${{ github.ref_name }}
-
-            GPU-accelerated vector display server for Linux.
-
-            ### Artifacts
-
-            - `vgp-*.tar.gz` — source tarball
-            - `vgp-*-arch-x86_64.tar.gz` — Arch-compatible prefix tree
-            - `vgp_*_amd64.deb` + `libvgp0_*.deb` + `libvgp-dev_*.deb` —
-              Debian/Ubuntu packages
-            - `vgp-*.x86_64.rpm` + `vgp-libs-*.rpm` + `vgp-devel-*.rpm` —
-              Fedora/RHEL/openSUSE packages
-            - `SHA256SUMS` — checksums
-
-            ### Install
-
-            **Arch** — `yay -S vgp-git` or download the `-arch-` tarball and
-            extract to `/`.
-
-            **Debian/Ubuntu** — `sudo apt install ./vgp_*.deb ./libvgp0_*.deb`.
-
-            **Fedora/RHEL** — `sudo dnf install ./vgp-*.rpm`.
-
-            **From source** — `tar xf vgp-*.tar.gz && cd vgp-* && meson setup
-            build && sudo meson install -C build`.
 
   # ==========================================================
   # AUR push (unchanged from before)

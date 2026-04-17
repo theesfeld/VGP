@@ -1,0 +1,41 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - dependencies
+    authors:
+      - dependabot
+      - github-actions[bot]
+      - dependabot[bot]
+  categories:
+    - title: "💥 Breaking changes"
+      labels:
+        - breaking-change
+        - breaking
+    - title: "✨ Features"
+      labels:
+        - enhancement
+        - feature
+    - title: "🐛 Bug fixes"
+      labels:
+        - bug
+        - fix
+    - title: "🔐 Security"
+      labels:
+        - security
+    - title: "📚 Documentation"
+      labels:
+        - documentation
+        - docs
+    - title: "📦 Packaging"
+      labels:
+        - packaging
+        - build
+    - title: "🎨 UI / rendering"
+      labels:
+        - ui
+        - render
+        - shader
+    - title: "Other changes"
+      labels:
+        - "*"

@@ -52,6 +52,62 @@ approximation). `VGP_CPU=1` forces the plutovg CPU renderer.
   `vgp_xdg_resolve()` / `vgp_xdg_find_config()` / `vgp_xdg_find_data()`
   instead of hardcoding `$HOME/.config`.
 
+## Releases
+
+Release notes on the GitHub Releases page are assembled automatically
+when a `v<version>` tag is pushed:
+
+1. **PR-based summary** (top): GitHub's native `generate_release_notes`
+   walks every merged PR since the previous tag and groups them by the
+   label categories configured in `.github/release.yml` (Features, Bug
+   fixes, Documentation, Packaging, UI / rendering, Other). Each entry
+   reads `- PR title by @author in #N`.
+2. **Highlights** (middle): the section of `CHANGELOG.md` whose heading
+   matches the released version (`## [x.y.z]`). Maintain this by
+   moving items out of `## [Unreleased]` into a new versioned section
+   before tagging.
+3. **Commits** (middle): a full `git log` since the previous tag, one
+   line per commit, with a short SHA linked to the commit page and
+   `@author` attribution. Catches direct pushes to `master` that the
+   PR-based generator would miss.
+4. **Full diff link**, **Artifacts** list, and **Install** table
+   (bottom).
+
+To cut a release:
+
+```bash
+# 1. Move everything under [Unreleased] into a new [0.2.0] section.
+vim CHANGELOG.md
+
+# 2. Bump meson version.
+sed -i "s/^  version : '.*'/  version : '0.2.0',/" meson.build
+
+# 3. Commit + tag + push.
+git commit -am "Release 0.2.0"
+git tag -a v0.2.0 -m "Release 0.2.0"
+git push origin master v0.2.0
+```
+
+The release workflow (`.github/workflows/release.yml`) fans out into
+source / arch / deb / rpm build jobs, collects everything into one
+release, and attaches the assembled notes + `SHA256SUMS` to the GitHub
+Release.
+
+### PR labels that drive categorization
+
+| Label                            | Section              |
+| ---                              | ---                  |
+| `breaking-change`, `breaking`    | 💥 Breaking changes  |
+| `enhancement`, `feature`         | ✨ Features          |
+| `bug`, `fix`                     | 🐛 Bug fixes         |
+| `security`                       | 🔐 Security          |
+| `documentation`, `docs`          | 📚 Documentation     |
+| `packaging`, `build`             | 📦 Packaging         |
+| `ui`, `render`, `shader`         | 🎨 UI / rendering    |
+| (anything else)                  | Other changes        |
+
+PRs authored by `dependabot` or `github-actions` are excluded.
+
 ## Standards
 
 This codebase aims to be compliant with:
