@@ -9,113 +9,237 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  # ==========================================================
+  # Source tarball (plain `.tar.gz` of the tagged source tree)
+  # ==========================================================
+  source:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - id: ver
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Create source tarball
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git archive --format=tar.gz \
+            --prefix="vgp-${V}/" \
+            -o "vgp-${V}.tar.gz" HEAD
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: source-tarball
+          path: vgp-*.tar.gz
+
+  # ==========================================================
+  # Arch binary tarball + AUR publish
+  # ==========================================================
+  arch:
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-
     steps:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm git base-devel meson ninja \
-            libdrm libinput libxkbcommon seatd dbus libvterm \
-            mesa pam
+          pacman -S --noconfirm git base-devel meson ninja pkgconf \
+            libdrm libinput libxkbcommon libseat dbus libvterm \
+            mesa pam scdoc desktop-file-utils appstream
 
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          submodules: false
+      - uses: actions/checkout@v5
 
-      - name: Build and test
+      - name: Build
         env:
-          TAG_NAME: ${{ github.ref_name }}
+          V: ${{ github.ref_name }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          meson setup build -Dprefix=/usr -Dbuildtype=release
+          arch-meson build
           meson compile -C build
-          echo "Build successful"
-          ls -la build/vgp build/vgp-term build/vgp-launcher \
-                 build/vgp-settings build/vgp-files build/vgp-monitor build/vgp-view
           DESTDIR="$PWD/pkg" meson install -C build
-          tar czf "vgp-${TAG_NAME}-x86_64.tar.gz" -C pkg .
+          tar czf "vgp-${V#v}-arch-x86_64.tar.gz" -C pkg .
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v5
         with:
-          name: vgp-release
-          path: vgp-*.tar.gz
+          name: arch-tarball
+          path: vgp-*-arch-x86_64.tar.gz
+
+  # ==========================================================
+  # Debian / Ubuntu .deb
+  # ==========================================================
+  deb:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+    steps:
+      - name: Install build tools
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git build-essential devscripts debhelper-compat \
+            meson ninja-build pkgconf \
+            libdrm-dev libinput-dev libudev-dev libxkbcommon-dev \
+            libgbm-dev libegl-dev libgles-dev \
+            libdbus-1-dev libseat-dev libpam0g-dev libvterm-dev \
+            scdoc desktop-file-utils appstream \
+            fakeroot ca-certificates
+
+      - uses: actions/checkout@v5
+
+      - name: Update debian/changelog for tag
+        env:
+          V: ${{ github.ref_name }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          export DEBEMAIL="tj.theesfeld@citywide.io"
+          export DEBFULLNAME="William Theesfeld"
+          VER="${V#v}"
+          # Rewrite top changelog entry to the tag version.
+          dch --newversion "$VER" --distribution unstable "Release ${VER}."
+
+      - name: Build .deb
+        run: |
+          dpkg-buildpackage -us -uc -b
+          mkdir -p dist
+          mv ../*.deb dist/ || true
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: deb-packages
+          path: dist/*.deb
+
+  # ==========================================================
+  # Fedora / RHEL .rpm
+  # ==========================================================
+  rpm:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    steps:
+      - name: Install build tools
+        run: |
+          dnf -y install \
+            git rpm-build rpmdevtools \
+            gcc meson ninja-build pkgconf-pkg-config \
+            libdrm-devel libinput-devel libudev-devel libxkbcommon-devel \
+            mesa-libgbm-devel mesa-libEGL-devel mesa-libGLES-devel \
+            dbus-devel libseat-devel pam-devel libvterm-devel \
+            scdoc desktop-file-utils libappstream-glib
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Prepare source tarball for rpmbuild
+        env:
+          V: ${{ github.ref_name }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VER="${V#v}"
+          mkdir -p ~/rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          git archive --format=tar.gz \
+            --prefix="VGP-${VER}/" \
+            -o "$HOME/rpmbuild/SOURCES/vgp-${VER}.tar.gz" HEAD
+          sed "s/^Version:.*/Version:        ${VER}/" rpm/vgp.spec \
+            > ~/rpmbuild/SPECS/vgp.spec
+
+      - name: Build .rpm
+        run: |
+          rpmbuild -ba ~/rpmbuild/SPECS/vgp.spec
+          mkdir -p dist
+          find ~/rpmbuild/RPMS -name '*.rpm' -exec cp {} dist/ \;
+          find ~/rpmbuild/SRPMS -name '*.rpm' -exec cp {} dist/ \;
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: rpm-packages
+          path: dist/*.rpm
+
+  # ==========================================================
+  # Collect + publish GitHub Release
+  # ==========================================================
+  publish:
+    needs: [source, arch, deb, rpm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.deb' \
+                                   -o -name '*.rpm' \) \
+            -exec cp -v {} release/ \;
+          (cd release && sha256sum * > SHA256SUMS)
+          ls -la release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: vgp-*.tar.gz
+          files: release/*
           generate_release_notes: true
           body: |
             ## VGP ${{ github.ref_name }}
 
             GPU-accelerated vector display server for Linux.
 
-            ### Install (Arch/CachyOS)
-            ```
-            yay -S vgp-git
-            ```
+            ### Artifacts
 
-            ### Install from tarball
-            ```
-            tar xzf vgp-*.tar.gz -C /
-            ```
+            - `vgp-*.tar.gz` — source tarball
+            - `vgp-*-arch-x86_64.tar.gz` — Arch-compatible prefix tree
+            - `vgp_*_amd64.deb` + `libvgp0_*.deb` + `libvgp-dev_*.deb` —
+              Debian/Ubuntu packages
+            - `vgp-*.x86_64.rpm` + `vgp-libs-*.rpm` + `vgp-devel-*.rpm` —
+              Fedora/RHEL/openSUSE packages
+            - `SHA256SUMS` — checksums
 
+            ### Install
+
+            **Arch** — `yay -S vgp-git` or download the `-arch-` tarball and
+            extract to `/`.
+
+            **Debian/Ubuntu** — `sudo apt install ./vgp_*.deb ./libvgp0_*.deb`.
+
+            **Fedora/RHEL** — `sudo dnf install ./vgp-*.rpm`.
+
+            **From source** — `tar xf vgp-*.tar.gz && cd vgp-* && meson setup
+            build && sudo meson install -C build`.
+
+  # ==========================================================
+  # AUR push (unchanged from before)
+  # ==========================================================
   aur:
-    needs: build
+    needs: publish
     runs-on: ubuntu-latest
-
+    if: ${{ env.AUR_SSH_PRIVATE_KEY != '' }}
+    env:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Generate .SRCINFO and update version
+      - name: Update PKGBUILD version
         env:
-          TAG_NAME: ${{ github.ref_name }}
+          V: ${{ github.ref_name }}
         run: |
-          VERSION="${TAG_NAME#v}"
+          VERSION="${V#v}"
           sed -i "s/pkgver=.*/pkgver=$VERSION/" PKGBUILD
 
-          # Generate .SRCINFO manually (no makepkg available on ubuntu)
-          cat > .SRCINFO << SRCEOF
-          pkgbase = vgp-git
-          	pkgdesc = GPU-accelerated vector display server and desktop environment
-          	pkgver = ${VERSION}
-          	pkgrel = 1
-          	url = https://github.com/theesfeld/VGP
-          	arch = x86_64
-          	license = MIT
-          	makedepends = meson
-          	makedepends = ninja
-          	makedepends = git
-          	depends = libdrm
-          	depends = libinput
-          	depends = libxkbcommon
-          	depends = seatd
-          	depends = dbus
-          	depends = libvterm
-          	depends = mesa
-          	depends = pam
-          	provides = vgp
-          	conflicts = vgp
-          	source = git+https://github.com/theesfeld/VGP.git
-
-          pkgname = vgp-git
-          SRCEOF
-          # Remove leading whitespace from heredoc
-          sed -i 's/^          //' .SRCINFO
-
       - name: Setup SSH for AUR
-        env:
-          AUR_SSH_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "$AUR_SSH_KEY" > ~/.ssh/aur
+          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
           chmod 600 ~/.ssh/aur
           ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
           cat >> ~/.ssh/config << SSHEOF
@@ -127,14 +251,14 @@ jobs:
 
       - name: Publish to AUR
         env:
-          TAG_NAME: ${{ github.ref_name }}
+          V: ${{ github.ref_name }}
         run: |
-          VERSION="${TAG_NAME#v}"
+          VERSION="${V#v}"
           git clone ssh://aur@aur.archlinux.org/vgp-git.git /tmp/aur-pkg
           cp PKGBUILD /tmp/aur-pkg/
           sed -i "s/pkgver=.*/pkgver=$VERSION/" /tmp/aur-pkg/PKGBUILD
           cd /tmp/aur-pkg
-          # Generate .SRCINFO
+          # Generate .SRCINFO manually (no makepkg on ubuntu)
           cat > .SRCINFO << SRCEOF
           pkgbase = vgp-git
           	pkgdesc = GPU-accelerated vector display server and desktop environment
@@ -146,17 +270,19 @@ jobs:
           	makedepends = meson
           	makedepends = ninja
           	makedepends = git
+          	makedepends = pkgconf
+          	makedepends = scdoc
           	depends = libdrm
           	depends = libinput
           	depends = libxkbcommon
-          	depends = seatd
+          	depends = libseat
           	depends = dbus
           	depends = libvterm
           	depends = mesa
           	depends = pam
-          	provides = vgp
+          	provides = vgp=${VERSION}
           	conflicts = vgp
-          	source = git+https://github.com/theesfeld/VGP.git
+          	source = vgp::git+https://github.com/theesfeld/VGP.git
 
           pkgname = vgp-git
           SRCEOF

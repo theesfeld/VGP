@@ -1,0 +1,10 @@
+usr/bin/*
+usr/share/applications/*
+usr/share/wayland-sessions/*
+usr/share/metainfo/*
+usr/share/icons/*
+usr/share/man/*
+usr/share/vgp/*
+usr/share/bash-completion/*
+usr/share/zsh/*
+usr/share/fish/*

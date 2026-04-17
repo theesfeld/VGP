@@ -1,0 +1,2 @@
+libvgp.so.0 libvgp0 #MINVER#
+* Build-Depends-Package: libvgp-dev

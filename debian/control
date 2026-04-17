@@ -1,0 +1,60 @@
+Source: vgp
+Section: x11
+Priority: optional
+Maintainer: William Theesfeld <tj.theesfeld@citywide.io>
+Build-Depends: debhelper-compat (= 13),
+               meson (>= 0.62),
+               ninja-build,
+               pkgconf,
+               libdrm-dev,
+               libinput-dev,
+               libudev-dev,
+               libxkbcommon-dev,
+               libgbm-dev,
+               libegl-dev,
+               libgles-dev,
+               libdbus-1-dev,
+               libseat-dev,
+               libpam0g-dev,
+               libvterm-dev,
+               scdoc,
+               desktop-file-utils,
+               appstream
+Standards-Version: 4.7.0
+Homepage: https://github.com/theesfeld/VGP
+Vcs-Browser: https://github.com/theesfeld/VGP
+Vcs-Git: https://github.com/theesfeld/VGP.git
+Rules-Requires-Root: no
+
+Package: vgp
+Architecture: linux-any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+         libvgp0 (= ${binary:Version})
+Description: GPU-accelerated vector display server and desktop environment
+ VGP is a vector-rendered display server for Linux running directly on
+ DRM/KMS via GBM and EGL. No X11 or Wayland is required.
+ .
+ Ships with a compositor and a bundled desktop environment of F-16
+ HUD/MFD styled apps: terminal, file manager, text editor, launcher,
+ system monitor, settings, and status bar.
+
+Package: libvgp0
+Section: libs
+Architecture: linux-any
+Multi-Arch: same
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: VGP client library
+ Shared library used by applications to connect to the VGP display server
+ over its Unix-domain protocol socket.
+ .
+ This package contains the runtime library.
+
+Package: libvgp-dev
+Section: libdevel
+Architecture: linux-any
+Multi-Arch: same
+Depends: libvgp0 (= ${binary:Version}), ${misc:Depends}
+Description: VGP client library -- development files
+ Headers and pkg-config metadata for libvgp, the VGP client library.
+ .
+ Install this to build applications that connect to a VGP compositor.

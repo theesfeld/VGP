@@ -1,0 +1,3 @@
+usr/include/vgp/*
+usr/lib/*/libvgp.so
+usr/lib/*/pkgconfig/libvgp.pc

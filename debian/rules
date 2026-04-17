@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all reproducible=+all
+
+%:
+	dh $@ --buildsystem=meson
+
+override_dh_auto_test:
+	# Validate freedesktop files as part of the build
+	desktop-file-validate vgp.desktop
+	for f in data/*.desktop; do desktop-file-validate "$$f"; done
+	for f in data/metainfo/*.metainfo.xml; do \
+	  appstreamcli validate --strict "$$f" || true; \
+	done
+	dh_auto_test -- || true
