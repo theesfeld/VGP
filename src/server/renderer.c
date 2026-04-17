@@ -24,7 +24,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
-#include <math.h>
 #include <errno.h>
 
 #define TAG "renderer"
@@ -862,55 +861,8 @@ void vgp_renderer_render_output(vgp_renderer_t *renderer,
          * on this output appear at the correct position */
     }
 
-    /* === GLASS COMPOSITING PASS ===
-     * End NanoVG (flushes background to screen), capture to FBO,
-     * then draw frosted glass blur quads for each window.
-     * Then restart NanoVG for window content + decorations. */
-#ifdef VGP_HAS_GPU_BACKEND
-    if (b->type == VGP_BACKEND_GPU) {
-        vgp_gpu_state_t *gs = b->priv;
-        if (gs->fbo_initialized) {
-            /* Flush background render to GL */
-            nvgEndFrame(ctx);
-
-            /* Capture background to FBO texture */
-            vgp_fbo_resize(gs, output->width, output->height);
-            vgp_fbo_capture(gs, output->width, output->height);
-
-            /* Draw glass blur for the panel */
-            {
-                float bar_h = (panel_cfg->height > 0) ? (float)panel_cfg->height : theme->statusbar_height;
-                bool ptop = (strcmp(panel_cfg->position, "top") == 0);
-                float panel_y = ptop ? 0 : (float)output->height - bar_h;
-                vgp_fbo_draw_blur_rect(gs, 0, panel_y, (float)output->width, bar_h, 0,
-                                         4.0f, 0.05f, 0.05f, 0.07f, 0.04f,
-                                         output->width, output->height);
-            }
-
-            /* Draw glass blur for each visible decorated window */
-            for (int gi = 0; gi < comp->window_count; gi++) {
-                vgp_window_t *gw = comp->z_order[gi];
-                if (!gw->visible || gw->state == VGP_WIN_MINIMIZED) continue;
-                if (gw->workspace != workspace) continue;
-                if (!gw->decorated) continue;
-
-                float gx = (float)(gw->frame_rect.x - out_x);
-                float gy = (float)gw->frame_rect.y;
-                float gwidth = (float)gw->frame_rect.w;
-                float gheight = (float)gw->frame_rect.h;
-                float gcr = theme->corner_radius > 0 ? theme->corner_radius : 10.0f;
-
-                vgp_fbo_draw_blur_rect(gs, gx, gy, gwidth, gheight, gcr,
-                                         5.0f,  /* blur radius */
-                                         0.08f, 0.08f, 0.10f, 0.06f, /* near-clear tint */
-                                         output->width, output->height);
-            }
-
-            /* Restart NanoVG for content rendering */
-            nvgBeginFrame(ctx, (float)output->width, (float)output->height, 1.0f);
-        }
-    }
-#endif
+    /* FBO glass pipeline disabled -- caused GPU hangs.
+     * Will re-enable once we verify the baseline renders stably. */
 
     /* Layer 1: Windows on this workspace */
     for (int i = 0; i < comp->window_count; i++) {
