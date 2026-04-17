@@ -87,5 +87,9 @@ mode = "shader"       # solid, shader, wallpaper, none
 
 A theme is just a directory. To share it:
 1. Zip the directory: `zip -r mytheme.zip mytheme/`
-2. Others extract to `~/.config/vgp/themes/`
+2. Others extract to `$XDG_CONFIG_HOME/vgp/themes/`
 3. Select in config or settings GUI
+
+---
+
+← **[Configuration](Configuration)** · Next: **[Shaders](Shaders)** →

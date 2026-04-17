@@ -70,3 +70,7 @@ An 80x24 terminal sends 23,040 bytes per frame (vs 1,600,000 bytes for pixel dat
 | `src/libvgp/vgp.c` | Client library |
 | `src/libvgp-ui/vgp-ui.c` | Cell grid UI toolkit |
 | `src/vgp-term/term.c` | Terminal emulator |
+
+---
+
+← **[Shaders](Shaders)** · Next: **[FAQ](FAQ)** →

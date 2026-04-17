@@ -1,120 +1,77 @@
-# VGP - Vector Graphics Protocol
+# VGP
 
-A GPU-accelerated vector display server and desktop environment for Linux. Every pixel is vector-rendered. No X11. No Wayland. Pure VGP.
+[![Build](https://github.com/theesfeld/VGP/actions/workflows/build.yml/badge.svg)](https://github.com/theesfeld/VGP/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/theesfeld/VGP?include_prereleases&sort=semver)](https://github.com/theesfeld/VGP/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![AUR](https://img.shields.io/aur/version/vgp-git?label=AUR%3A%20vgp-git)](https://aur.archlinux.org/packages/vgp-git)
+[![Platform](https://img.shields.io/badge/platform-Linux%20DRM%2FKMS-black)](#)
+[![C17](https://img.shields.io/badge/C-17-A8B9CC?logo=c)](#)
 
-## What is VGP?
+**GPU-accelerated vector display server and desktop environment for Linux.**
+Runs directly on DRM/KMS via GBM and EGL — no X11, no Wayland.
 
-VGP is a display server that renders everything -- windows, text, decorations, cursors, UI elements -- as vector graphics on the GPU using NanoVG and OpenGL ES 3.0. It runs directly on DRM/KMS with no dependency on X11 or Wayland.
+- Every window, glyph, cursor, and decoration is vector-rendered on the GPU
+  (NanoVG + GLES3).
+- Photorealistic plexiglass window chrome composited through an FBO pipeline
+  (scene + downsample chain + per-window glass fragment shader with Fresnel,
+  IOR offset, chromatic aberration).
+- Volumetric cumulus background (Henyey-Greenstein scattering, Beer–Lambert
+  + powder, weather-map coverage, high-frequency erosion).
+- F-16 HUD / MFD UX across every bundled app: `vgp-term`, `vgp-edit`,
+  `vgp-files`, `vgp-launcher`, `vgp-monitor`, `vgp-settings`, `vgp-bar`,
+  `vgp-view`.
+- Fully [standards-compliant](CONTRIBUTING.md#standards): XDG Base Directory,
+  XDG Autostart, Desktop Entry, AppStream, Desktop Notifications, SPDX,
+  semver.
 
-The terminal emulator sends a cell grid (character + color + attributes per cell) over IPC, and the server renders the text at native resolution using GPU vector rendering. Resize a terminal to any size -- text is always crisp because it's never a bitmap.
+## Install
 
-## Features
+Pre-built packages attached to every [release][releases]:
 
-- **GPU vector rendering** via NanoVG + OpenGL ES 3.0
-- **Multi-monitor** with per-monitor workspaces
-- **GLSL shader backgrounds** -- cyberpunk grids, parallax, mouse-reactive lighting, window shadow casting
-- **Configurable everything** -- keybinds, themes, panel widgets, monitor layout, pointer speed
-- **Three default themes** -- Dark (cyberpunk), NERV (tactical HUD), Light (clean professional)
-- **Window management** -- floating, snap to edges, maximize, minimize, expose/overview mode
-- **Terminal emulator** (vgp-term) with selection, clipboard, scrollback, 256-color + true color
-- **Application launcher** with fuzzy search of .desktop files
-- **Native apps** -- settings editor, file manager, system monitor, image viewer
-- **D-Bus notifications** -- standard freedesktop.org notification daemon
-- **Session management** via libseat (runs without root)
+| Distro                   | Command                                             |
+| ---                      | ---                                                 |
+| Arch / CachyOS / Manjaro | `yay -S vgp-git`                                    |
+| Debian / Ubuntu          | `sudo apt install ./vgp_*.deb ./libvgp0_*.deb`      |
+| Fedora / RHEL / CentOS   | `sudo dnf install ./vgp-*.rpm ./vgp-libs-*.rpm`     |
+| openSUSE                 | `sudo zypper install ./vgp-*.rpm ./vgp-libs-*.rpm`  |
+| Source                   | `meson setup build && sudo meson install -C build`  |
 
-## Architecture
+Full per-distro instructions, dependency lists, and `SHA256SUMS`
+verification in **[wiki → Installation][wiki-install]**.
 
-```
-┌─────────────────────────────────────────────┐
-│             VGP Server (964KB)              │
-│  DRM/KMS │ NanoVG/GLES3 │ libinput │ D-Bus │
-│  libseat │ Compositor   │ IPC      │ Shaders│
-└──────────────────┬──────────────────────────┘
-                   │ Unix socket (cell grid protocol)
-    ┌──────────────┼──────────────┐
-    │              │              │
- vgp-term    vgp-settings   vgp-files
- (72KB)       (50KB)         (44KB)
-```
+## Documentation
 
-Client apps send vector draw commands (cell grids) -- the server renders everything on the GPU. No pixel buffers for text content. A terminal frame is 23KB of cell data vs 1.6MB of pixels.
+- **[Home][wiki-home]** — overview, what VGP is and isn't.
+- **[Installation][wiki-install]** — per-distro packages + build from source.
+- **[Configuration][wiki-config]** — keybinds, monitors, panel, input.
+- **[Themes][wiki-themes]** — palette, geometry, hot-reload.
+- **[Shaders][wiki-shaders]** — writing GLSL background / panel effects.
+- **[Architecture][wiki-arch]** — render pipeline, IPC protocol, file layout.
+- **[FAQ][wiki-faq]**
 
-## Building
+Reference:
 
-### Dependencies
+- `man 1 vgp`, `man 5 vgp.conf` (installed with the package)
+- [`CHANGELOG.md`](CHANGELOG.md)
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`SECURITY.md`](SECURITY.md)
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
 
-```
-libdrm libinput xkbcommon libseat dbus-1 gbm egl glesv2 libvterm
-```
+## Support
 
-On Arch/CachyOS:
-```bash
-pacman -S meson libdrm libinput libxkbcommon seatd dbus libvterm mesa
-```
-
-### Build
-
-```bash
-git clone https://github.com/theesfeld/VGP.git
-cd VGP
-meson setup build
-meson compile -C build
-```
-
-### Run
-
-```bash
-# From a TTY (Ctrl+Alt+F2), or from a greeter:
-./build/vgp --config ~/.config/vgp/config.toml
-```
-
-## Configuration
-
-All config lives in `~/.config/vgp/`:
-
-```
-~/.config/vgp/
-├── config.toml          # main config (keybinds, input, monitors, panel)
-├── terminal.toml        # terminal settings (font, scrollback, cursor, colors)
-├── shaders/             # user shader effects (.frag files)
-│   ├── background.frag
-│   └── panel.frag
-└── themes/              # theme directories
-    ├── dark/
-    │   ├── theme.toml
-    │   └── shaders/
-    ├── nerv/
-    └── light/
-```
-
-### Default Keybinds
-
-| Key | Action |
-|-----|--------|
-| Super+Return | Open terminal |
-| Super+D | Open launcher |
-| Super+Q | Close window |
-| Super+Tab | Expose/overview |
-| Super+Left/Right/Up/Down | Snap window |
-| Super+1/2/3 | Switch workspace |
-| Super+Shift+1/2/3 | Move window to workspace |
-| Alt+Tab | Cycle focus |
-| Super+S | Settings |
-| Super+E | File manager |
-| Super+P | System monitor |
-| PrintScreen | Screenshot |
-| Ctrl+Alt+Backspace | Quit |
-
-## Themes
-
-Themes are self-contained directories with a `theme.toml` and optional GLSL shaders. They control every visual aspect: colors, geometry, fonts, window decorations, panel, cursor, opacity, and shader effects.
-
-Switch themes in `config.toml`:
-```toml
-[general]
-theme = "nerv"
-```
+- Bugs / feature requests → [GitHub Issues](https://github.com/theesfeld/VGP/issues)
+- Security disclosures → [`SECURITY.md`](SECURITY.md)
 
 ## License
 
-MIT
+MIT. Every source file carries an SPDX identifier; full text in
+[`LICENSE`](LICENSE).
+
+[releases]:     https://github.com/theesfeld/VGP/releases
+[wiki-home]:    https://github.com/theesfeld/VGP/wiki/Home
+[wiki-install]: https://github.com/theesfeld/VGP/wiki/Installation
+[wiki-config]:  https://github.com/theesfeld/VGP/wiki/Configuration
+[wiki-themes]:  https://github.com/theesfeld/VGP/wiki/Themes
+[wiki-shaders]: https://github.com/theesfeld/VGP/wiki/Shaders
+[wiki-arch]:    https://github.com/theesfeld/VGP/wiki/Architecture
+[wiki-faq]:     https://github.com/theesfeld/VGP/wiki/FAQ

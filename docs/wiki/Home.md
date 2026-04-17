@@ -1,32 +1,57 @@
-# VGP - Vector Graphics Protocol
+# VGP Wiki
 
-Welcome to the VGP wiki.
+GPU-accelerated vector display server and desktop environment for Linux.
+Runs directly on DRM/KMS via GBM and EGL — no X11, no Wayland.
 
-## What VGP Is
+## What VGP is
 
-VGP is a **GPU-accelerated vector display server** and desktop environment for Linux. It is a complete replacement for X11/Wayland for users who primarily use terminal/TUI applications.
+- Every window, glyph, cursor, and decoration is vector-rendered on the GPU
+  via NanoVG + GLES3.
+- Photorealistic plexiglass window chrome composited through an FBO pipeline
+  (scene + downsample chain + per-window glass fragment shader).
+- Volumetric cumulus background with Henyey-Greenstein scattering.
+- F-16 HUD/MFD UX across every bundled app.
+- Fully configurable via TOML + a built-in settings editor.
+- Standards-compliant: [XDG Base Directory][xdg-base],
+  [XDG Autostart][xdg-auto], [Desktop Entry][desktop-entry],
+  [AppStream][appstream], [Desktop Notifications][notif-spec],
+  [SPDX][spdx], [Semantic Versioning][semver].
 
-- **Everything is vector-rendered** -- text, windows, decorations, cursors, UI elements are all drawn as vector paths on the GPU via NanoVG and OpenGL ES 3.0
-- **No pixel buffers for text** -- the terminal sends a cell grid (character + color per cell), the server renders text at native resolution. Resize a window to any size -- text is always crisp
-- **Custom GLSL shader backgrounds** -- animated, parallax, mouse-reactive, window shadow casting
-- **Fully configurable** -- every aspect is user-controlled via TOML config files and a built-in settings GUI
-- **Themeable** -- themes control everything: colors, geometry, fonts, shaders, decorations
-- **Tiling + floating** window management with configurable algorithms
+## What VGP is not
 
-## What VGP Is Not
+- Not an X11 / Wayland replacement for existing GUI apps. Firefox / Chrome /
+  VS Code / Electron will not run natively.
+- Not a Wayland compositor — VGP defines its own protocol (`libvgp`).
+- Not production-stable. Early-stage, breaking changes expected.
 
-- **Not an X11 replacement for GUI apps** -- Firefox, Chrome, VS Code, GIMP, etc. will not run natively. VGP has its own protocol. (XWayland support is planned for the future.)
-- **Not Wayland** -- VGP is a completely independent protocol. It does not implement the Wayland protocol.
-- **Not a compositor for existing apps** -- VGP apps must be built against `libvgp`. The terminal emulator handles TUI/CLI programs.
-- **Not production-stable yet** -- VGP is in active development. Use at your own risk.
+## Start here
 
-## Pages
+1. **[Installation](Installation)** — pre-built packages (Arch / Debian /
+   Ubuntu / Fedora / RHEL / openSUSE) + build-from-source.
+2. **[Configuration](Configuration)** — keybinds, monitors, panel, input,
+   autostart.
+3. **[Themes](Themes)** — color palette + geometry, hot-reload.
+4. **[Shaders](Shaders)** — writing GLSL fragment shaders for backgrounds
+   and panels.
+5. **[Architecture](Architecture)** — internals, IPC protocol, render
+   pipeline.
+6. **[FAQ](FAQ)** — common questions.
 
-- [[Installation]]
-- [[Configuration]]
-- [[Themes]]
-- [[Shaders]]
-- [[Keybinds]]
-- [[Building Apps]]
-- [[Architecture]]
-- [[FAQ]]
+## Project links
+
+- [GitHub repository](https://github.com/theesfeld/VGP)
+- [Issue tracker](https://github.com/theesfeld/VGP/issues)
+- [Releases](https://github.com/theesfeld/VGP/releases) — `.deb`, `.rpm`,
+  Arch tarball, source.
+- [AUR package](https://aur.archlinux.org/packages/vgp-git)
+- [CHANGELOG](https://github.com/theesfeld/VGP/blob/master/CHANGELOG.md)
+- [Contributing](https://github.com/theesfeld/VGP/blob/master/CONTRIBUTING.md)
+- [Security policy](https://github.com/theesfeld/VGP/blob/master/SECURITY.md)
+
+[xdg-base]:     https://specifications.freedesktop.org/basedir-spec/latest/
+[xdg-auto]:     https://specifications.freedesktop.org/autostart-spec/latest/
+[desktop-entry]: https://specifications.freedesktop.org/desktop-entry-spec/latest/
+[appstream]:    https://www.freedesktop.org/software/appstream/docs/
+[notif-spec]:   https://specifications.freedesktop.org/notification-spec/latest/
+[spdx]:         https://spdx.org/licenses/
+[semver]:       https://semver.org/spec/v2.0.0.html

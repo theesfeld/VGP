@@ -124,3 +124,7 @@ scroll_down = "Shift+Page_Down"
 | equal | Grid of equal-sized windows |
 | master_stack | One large master window, rest stacked vertically |
 | spiral | Fibonacci inward spiral |
+
+---
+
+← **[Installation](Installation)** · Next: **[Themes](Themes)** →

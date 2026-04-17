@@ -46,3 +46,7 @@ Your shell config (`.bashrc`, `.zshrc`, etc.) works as-is inside `vgp-term`. VGP
 ## Is this ready for daily use?
 
 VGP is in active development. It's functional but may have rough edges. Use it alongside your existing DE/WM (switch between them at the greeter) as you evaluate it.
+
+---
+
+← **[Architecture](Architecture)** · Back to **[Home](Home)**

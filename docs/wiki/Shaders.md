@@ -63,3 +63,7 @@ Use `u_windows` and `u_window_count` to cast shadows from the mouse light source
 ## Hot Reload
 
 Shaders are loaded at startup. Theme hot-reload (editing a shader and seeing changes live) is planned.
+
+---
+
+← **[Themes](Themes)** · Next: **[Architecture](Architecture)** →
