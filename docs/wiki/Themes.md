@@ -1,94 +1,112 @@
 # Themes
 
-Themes are self-contained directories that define every visual aspect of VGP.
+A theme is a named directory of TOML + optional GLSL that controls every
+visual aspect of VGP.
 
-## Theme Directory Structure
+## Where themes live
+
+Resolved in this order (first hit wins):
+
+1. `$XDG_CONFIG_HOME/vgp/themes/<name>/theme.toml`
+2. `$XDG_CONFIG_DIRS/vgp/themes/<name>/theme.toml`
+3. `$XDG_DATA_HOME/vgp/themes/<name>/theme.toml`
+4. `$XDG_DATA_DIRS/vgp/themes/<name>/theme.toml`
+   (typically `/usr/share/vgp/themes/...` for system themes)
+
+## Switching themes
+
+In `config.toml`:
+
+```toml
+[general]
+theme = "hud"
+```
+
+Or open `vgp-settings` (**Super+S**) → **Theme** page and click one.
+Changes take effect on the next SIGHUP to `vgp` (`pkill -HUP vgp`); the
+settings editor sends the signal for you.
+
+## Theme directory layout
 
 ```
 ~/.config/vgp/themes/my-theme/
-├── theme.toml          # complete UI definition
-└── shaders/            # GLSL fragment shaders
+├── theme.toml           # colours + geometry
+└── shaders/             # optional GLSL fragment shaders
     ├── background.frag
     └── panel.frag
 ```
 
-## Switching Themes
+## Bundled default
 
-In `config.toml`:
-```toml
-[general]
-theme = "dark"    # or "nerv", "light", or any directory name
-```
+The repository ships `themes/default.toml`. Distro packages install the
+full `themes/` tree to `$datadir/vgp/themes/`, discoverable via the XDG
+data-dirs fallback above. To override, copy the directory into
+`$XDG_CONFIG_HOME/vgp/themes/` and edit.
 
-Or use the Settings app (Super+S) → Theme tab.
+## theme.toml — every key the parser reads
 
-## Default Themes
-
-| Theme | Description |
-|-------|-------------|
-| **dark** | Modern dark theme with cyberpunk shader background |
-| **nerv** | Tactical HUD inspired by NERV/Evangelion -- orange, angular, radar sweep |
-| **light** | Clean professional theme, no shader background |
-
-## Creating a Theme
-
-Create a directory in `~/.config/vgp/themes/` with a `theme.toml`:
+The parser ignores section headers; you can organise keys under any
+section you like, or put them all at the top level. TOML comments (`#`)
+are fine. Unknown keys are silently skipped.
 
 ```toml
-[meta]
-name = "My Theme"
-author = "Your Name"
-version = "1.0"
+# theme.toml — full key reference
 
-[colors]
-background = "#1A1A2E"
-foreground = "#E0E0E0"
-accent = "#5294E2"
-surface = "#1E1E2E"
-border = "#3C3C4C"
-error = "#E06060"
-success = "#60C060"
-warning = "#E0C040"
+# --- Geometry (pixels / points) ---
+titlebar_height     = 32.0
+border_width        = 1.0
+corner_radius       = 20.0
+statusbar_height    = 30.0
 
-[window]
-titlebar_height = 32
-border_width = 2
-corner_radius = 8
-opacity = 0.9
-inactive_opacity = 0.85
-
-[window.active]
-titlebar_bg = "#2D2D2D"
-border_color = "#5294E2"
-
-[window.inactive]
-titlebar_bg = "#1E1E1E"
-border_color = "#3C3C3C"
-
-[window.buttons]
-radius = 7
-close = "#E06060"
-maximize = "#60C060"
-minimize = "#E0C040"
-
-[panel]
-bg = "#16213E"
-text = "#C0C0C0"
-height = 32
-
-[shaders]
-background = "shaders/background.frag"
-
-[background]
-mode = "shader"       # solid, shader, wallpaper, none
+# --- Colors (hex RGB, leading # optional) ---
+# Compositor-side alpha is applied by the glass pipeline; the hex value
+# is interpreted as a fully-opaque colour.
+titlebar_active     = "#A6C7F2"      # cool-blue glass tint
+titlebar_inactive   = "#8CA6CD"
+border_active       = "#FFD700"      # accent -- yellow
+border_inactive     = "#666666"
+background          = "#000000"      # fallback solid colour if no shader
+statusbar_bg        = "#16213E"      # panel plexi tint
+statusbar_text      = "#FFFFF2"
+close_btn           = "#CCCCCC"
+maximize_btn        = "#CCCCCC"
+minimize_btn        = "#CCCCCC"
 ```
 
-## Packaging Themes
+## Inline overrides in `config.toml`
 
-A theme is just a directory. To share it:
-1. Zip the directory: `zip -r mytheme.zip mytheme/`
-2. Others extract to `$XDG_CONFIG_HOME/vgp/themes/`
-3. Select in config or settings GUI
+Any theme key can be overridden globally from the main config without
+cloning the theme directory:
+
+```toml
+[theme]
+corner_radius = 24
+border_active = "#FF8800"
+```
+
+See [Configuration → `[theme]`](Configuration#theme) for the context.
+
+## Shaders referenced by themes
+
+The compositor searches for background and panel shaders at:
+
+1. `$XDG_CONFIG_HOME/vgp/shaders/background.frag` (or `panel.frag`)
+2. `$XDG_CONFIG_DIRS/vgp/shaders/...`
+3. `$XDG_DATA_HOME/vgp/shaders/...`
+4. `$XDG_DATA_DIRS/vgp/shaders/...`
+
+The bundled `themes/shaders/` directory is installed to
+`/usr/share/vgp/shaders/` and picked up by the search path. See
+[Shaders](Shaders) for how to write your own.
+
+## Sharing a theme
+
+```bash
+tar czf my-theme.tar.gz -C ~/.config/vgp/themes my-theme
+```
+
+Recipients extract into `$XDG_CONFIG_HOME/vgp/themes/` and set
+`[general] theme = "my-theme"`.
 
 ---
 
