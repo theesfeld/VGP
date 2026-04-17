@@ -1,4 +1,5 @@
 #include "term.h"
+#include "vgp/xdg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,12 +40,9 @@ static void config_load_defaults(vgp_term_config_t *cfg)
 static void config_load(vgp_term_config_t *cfg, const char *path)
 {
     config_load_defaults(cfg);
+    char buf[512];
     if (!path) {
-        const char *home = getenv("HOME");
-        char buf[512];
-        if (home)
-            snprintf(buf, sizeof(buf), "%s/.config/vgp/terminal.toml", home);
-        else
+        if (!vgp_xdg_find_config("vgp/terminal.toml", buf, sizeof(buf)))
             return;
         path = buf;
     }

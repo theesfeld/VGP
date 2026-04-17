@@ -5,6 +5,7 @@
 #include "vgp-gfx.h"
 #include "vgp-hud.h"
 #include "config-writer.h"
+#include "vgp/xdg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -150,35 +151,70 @@ static settings_state_t S;
  * Config loading / saving
  * ============================================================ */
 
-static void scan_themes(void)
+static void scan_themes_dir(const char *path)
 {
-    S.theme_count = 0;
-    const char *home = getenv("HOME");
-    if (!home) return;
-    char path[512];
-    snprintf(path, sizeof(path), "%s/.config/vgp/themes", home);
     DIR *dir = opendir(path);
     if (!dir) return;
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL && S.theme_count < 32) {
         if (entry->d_name[0] == '.') continue;
         if (entry->d_type != DT_DIR) continue;
-        snprintf(S.themes[S.theme_count++], 64, "%s", entry->d_name);
+        /* de-dup */
+        bool seen = false;
+        for (int i = 0; i < S.theme_count; i++)
+            if (strcmp(S.themes[i], entry->d_name) == 0) { seen = true; break; }
+        if (!seen)
+            snprintf(S.themes[S.theme_count++], 64, "%s", entry->d_name);
     }
     closedir(dir);
 }
 
+static void scan_themes(void)
+{
+    S.theme_count = 0;
+    /* 1. $XDG_CONFIG_HOME/vgp/themes */
+    char p[512];
+    if (vgp_xdg_resolve(VGP_XDG_CONFIG, "vgp/themes", p, sizeof(p)))
+        scan_themes_dir(p);
+    /* 2. $XDG_DATA_HOME/vgp/themes */
+    if (vgp_xdg_resolve(VGP_XDG_DATA, "vgp/themes", p, sizeof(p)))
+        scan_themes_dir(p);
+    /* 3. $XDG_DATA_DIRS/vgp/themes */
+    const char *dirs = getenv("XDG_DATA_DIRS");
+    if (!dirs || !*dirs) dirs = "/usr/local/share:/usr/share";
+    const char *q = dirs;
+    while (*q) {
+        const char *end = strchr(q, ':');
+        size_t len = end ? (size_t)(end - q) : strlen(q);
+        if (len > 0 && len < sizeof(p) - 32) {
+            char dir[512];
+            memcpy(dir, q, len); dir[len] = '\0';
+            snprintf(p, sizeof(p), "%s/vgp/themes", dir);
+            scan_themes_dir(p);
+        }
+        if (!end) break;
+        q = end + 1;
+    }
+}
+
 static void load_config(void)
 {
+    /* Config path: $XDG_CONFIG_HOME/vgp/config.toml */
+    if (!vgp_xdg_resolve(VGP_XDG_CONFIG, "vgp/config.toml",
+                           S.config_path, sizeof(S.config_path)))
+        return;
+
     const char *home = getenv("HOME");
-    if (!home) return;
-    snprintf(S.config_path, sizeof(S.config_path), "%s/.config/vgp/config.toml", home);
 
     /* Defaults */
     snprintf(S.terminal, sizeof(S.terminal), "vgp-term");
     snprintf(S.launcher, sizeof(S.launcher), "vgp-launcher");
     snprintf(S.theme_name, sizeof(S.theme_name), "dark");
-    snprintf(S.screenshot_dir, sizeof(S.screenshot_dir), "%s/Pictures", home);
+    const char *xdg_pics = getenv("XDG_PICTURES_DIR");
+    if (xdg_pics && *xdg_pics)
+        snprintf(S.screenshot_dir, sizeof(S.screenshot_dir), "%s", xdg_pics);
+    else if (home)
+        snprintf(S.screenshot_dir, sizeof(S.screenshot_dir), "%s/Pictures", home);
     snprintf(S.url_handler, sizeof(S.url_handler), "vgp-term -e w3m '%%s'");
     S.font_size = 14.0f;
     S.workspaces = 9;
@@ -783,7 +819,11 @@ static void render(vgfx_ctx_t *ctx)
 int main(int argc, char *argv[])
 {
     (void)argc; (void)argv;
-    FILE *lf = fopen("/tmp/vgp-settings.log", "w");
+    char log_path[512];
+    if (!vgp_xdg_resolve(VGP_XDG_STATE, "vgp/vgp-settings.log",
+                           log_path, sizeof(log_path)))
+        snprintf(log_path, sizeof(log_path), "/tmp/vgp-settings.log");
+    FILE *lf = fopen(log_path, "w");
     if (lf) { setvbuf(lf, NULL, _IOLBF, 0); dup2(fileno(lf), STDERR_FILENO); fclose(lf); }
 
     load_config();

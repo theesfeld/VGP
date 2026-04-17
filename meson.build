@@ -98,6 +98,7 @@ vgp_server_sources = files(
   'src/server/panel.c',
   'src/server/fbo_glass.c',
   'src/libvgp-gfx/vgp-stroke-font.c',
+  'src/libvgp/xdg.c',
 )
 
 # Add GPU backend sources if available
@@ -137,7 +138,7 @@ executable('vgp',
 # ============================================================
 
 libvgp = shared_library('vgp',
-  files('src/libvgp/vgp.c'),
+  files('src/libvgp/vgp.c', 'src/libvgp/xdg.c'),
   include_directories : vgp_inc,
   install : true,
 )
@@ -312,4 +313,24 @@ install_data(
   'data/vgp-edit.desktop',
   'data/vgp-bar.desktop',
   install_dir : get_option('datadir') / 'applications',
+)
+
+# ============================================================
+# XDG data files: shaders + themes installed to $datadir/vgp/
+# (per XDG_DATA_DIRS). Users can override in $XDG_DATA_HOME/vgp/
+# or $XDG_CONFIG_HOME/vgp/.
+# ============================================================
+
+install_subdir('themes',
+  install_dir : get_option('datadir') / 'vgp',
+  exclude_directories : ['.git'],
+)
+
+install_subdir('data',
+  install_dir : get_option('datadir') / 'vgp',
+  exclude_files : [
+    'vgp-term.desktop', 'vgp-settings.desktop', 'vgp-files.desktop',
+    'vgp-monitor.desktop', 'vgp-launcher.desktop', 'vgp-edit.desktop',
+    'vgp-bar.desktop',
+  ],
 )

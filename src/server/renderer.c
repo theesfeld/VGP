@@ -12,6 +12,7 @@
 #include "fbo_glass.h"
 #include "vgp/log.h"
 #include "vgp/protocol.h"
+#include "vgp/xdg.h"
 
 #include <plutovg.h>
 
@@ -914,40 +915,24 @@ int vgp_renderer_init(vgp_renderer_t *renderer, vgp_drm_backend_t *drm,
             vgp_gpu_state_t *gs = renderer->backend->priv;
             gs->shader_mgr = smgr;
 
-            /* Load background shader from theme's resolved path */
-            /* server is passed as the frame timer's user_data -- but we
-             * don't have it here yet. Use the theme's background_shader
-             * field which was resolved during config loading. */
-            /* For now, search known paths including theme dir */
-            const char *home = getenv("HOME");
+            /* Shaders resolved via XDG search path:
+             *   1. $XDG_CONFIG_HOME/vgp/shaders/<name>
+             *   2. each $XDG_CONFIG_DIRS/vgp/shaders/<name>
+             *   3. $XDG_DATA_HOME/vgp/shaders/<name>
+             *   4. each $XDG_DATA_DIRS/vgp/shaders/<name> (/usr/share/vgp/...)
+             */
             char path_buf[512];
+            if (vgp_xdg_find_config("vgp/shaders/background.frag",
+                                      path_buf, sizeof(path_buf)) ||
+                vgp_xdg_find_data("vgp/shaders/background.frag",
+                                    path_buf, sizeof(path_buf)))
+                renderer->shader_background = vgp_shader_load(smgr, path_buf);
 
-            /* Background shader: theme-resolved path first */
-            const char *bg_paths[4] = { NULL, NULL, NULL, NULL };
-            int bg_count = 0;
-            /* We'll get the actual theme path from server after init.
-             * For now, try common locations. */
-            if (home) {
-                snprintf(path_buf, sizeof(path_buf),
-                         "%s/.config/vgp/shaders/background.frag", home);
-                bg_paths[bg_count++] = strdup(path_buf);
-            }
-            bg_paths[bg_count++] = "themes/shaders/background.frag";
-
-            for (int i = 0; i < bg_count && bg_paths[i]; i++) {
-                renderer->shader_background = vgp_shader_load(smgr, bg_paths[i]);
-                if (renderer->shader_background >= 0) break;
-            }
-            /* Free only dynamically allocated paths (index 0) */
-            if (bg_count > 0 && bg_paths[0])
-                free((void*)bg_paths[0]);
-
-            /* Panel shader */
-            if (home) {
-                snprintf(path_buf, sizeof(path_buf),
-                         "%s/.config/vgp/shaders/panel.frag", home);
+            if (vgp_xdg_find_config("vgp/shaders/panel.frag",
+                                      path_buf, sizeof(path_buf)) ||
+                vgp_xdg_find_data("vgp/shaders/panel.frag",
+                                    path_buf, sizeof(path_buf)))
                 renderer->shader_panel = vgp_shader_load(smgr, path_buf);
-            }
 
             /* Overlay shader slot reserved for future FBO post-process */
         }

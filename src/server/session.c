@@ -2,6 +2,7 @@
 #include "server.h"
 #include "spawn.h"
 #include "vgp/log.h"
+#include "vgp/xdg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,11 +13,10 @@
 
 int vgp_session_save(struct vgp_server *server)
 {
-    const char *home = getenv("HOME");
-    if (!home) return -1;
-
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/vgp/session.json", home);
+    if (!vgp_xdg_resolve(VGP_XDG_STATE, "vgp/session.json",
+                           path, sizeof(path)))
+        return -1;
 
     FILE *f = fopen(path, "w");
     if (!f) {
@@ -90,11 +90,10 @@ int vgp_session_load(vgp_session_t *session)
 {
     memset(session, 0, sizeof(*session));
 
-    const char *home = getenv("HOME");
-    if (!home) return -1;
-
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/vgp/session.json", home);
+    if (!vgp_xdg_resolve(VGP_XDG_STATE, "vgp/session.json",
+                           path, sizeof(path)))
+        return -1;
 
     FILE *f = fopen(path, "r");
     if (!f) return -1;

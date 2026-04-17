@@ -1,5 +1,6 @@
 #include "config.h"
 #include "vgp/log.h"
+#include "vgp/xdg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -166,18 +167,23 @@ int vgp_config_load(vgp_config_t *config, const char *path)
     vgp_config_load_defaults(config);
 
     if (!path) {
-        /* Resolve default path */
-        const char *config_home = getenv("XDG_CONFIG_HOME");
-        const char *home = getenv("HOME");
-        if (config_home)
+        /* Default config path: $XDG_CONFIG_HOME/vgp/config.toml, then
+         * fall back to anywhere in XDG_CONFIG_DIRS ( /etc/xdg/vgp/... ). */
+        char found[512];
+        if (vgp_xdg_find_config("vgp/config.toml",
+                                  found, sizeof(found))) {
             snprintf(config->config_path, sizeof(config->config_path),
-                     "%s/vgp/config.toml", config_home);
-        else if (home)
-            snprintf(config->config_path, sizeof(config->config_path),
-                     "%s/.config/vgp/config.toml", home);
-        else
-            return 0; /* no config, use defaults */
-        path = config->config_path;
+                     "%s", found);
+            path = config->config_path;
+        } else {
+            /* Resolve a would-be write path so later saves work. */
+            if (!vgp_xdg_resolve(VGP_XDG_CONFIG, "vgp/config.toml",
+                                    config->config_path,
+                                    sizeof(config->config_path)))
+                return 0;
+            VGP_LOG_INFO(TAG, "no config found, using defaults");
+            return 0;
+        }
     } else {
         snprintf(config->config_path, sizeof(config->config_path), "%s", path);
     }
@@ -422,21 +428,34 @@ int vgp_config_load(vgp_config_t *config, const char *path)
 
     fclose(f);
 
-    /* Resolve and load theme directory */
+    /* Resolve and load theme.
+     * Search order (XDG): $XDG_CONFIG_HOME/vgp/themes/<name>/theme.toml,
+     *                     then each $XDG_CONFIG_DIRS/vgp/themes/<name>/theme.toml,
+     *                     then $XDG_DATA_HOME/vgp/themes/...,
+     *                     then each $XDG_DATA_DIRS/vgp/themes/... */
     {
-        const char *home = getenv("HOME");
+        char theme_rel[VGP_CONFIG_MAX_PATH];
         char theme_path[VGP_CONFIG_MAX_PATH];
+        theme_path[0] = '\0';
+        snprintf(theme_rel, sizeof(theme_rel),
+                 "vgp/themes/%s/theme.toml", config->general.theme_name);
+        if (!vgp_xdg_find_config(theme_rel, theme_path, sizeof(theme_path)))
+            vgp_xdg_find_data(theme_rel, theme_path, sizeof(theme_path));
 
-        /* Try: ~/.config/vgp/themes/<name>/theme.toml */
-        if (home) {
-            snprintf(theme_path, sizeof(theme_path),
-                     "%s/.config/vgp/themes/%s/theme.toml",
-                     home, config->general.theme_name);
-            snprintf(config->general.theme_dir, sizeof(config->general.theme_dir),
-                     "%s/.config/vgp/themes/%s",
-                     home, config->general.theme_name);
+        /* Derive theme_dir from theme_path (strip /theme.toml). */
+        if (theme_path[0]) {
+            snprintf(config->general.theme_dir,
+                     sizeof(config->general.theme_dir), "%s", theme_path);
+            char *last = strrchr(config->general.theme_dir, '/');
+            if (last) *last = '\0';
         } else {
-            theme_path[0] = '\0';
+            /* Fallback to a would-be XDG path for display purposes. */
+            char rel[VGP_CONFIG_MAX_PATH];
+            snprintf(rel, sizeof(rel), "vgp/themes/%s",
+                     config->general.theme_name);
+            vgp_xdg_resolve(VGP_XDG_CONFIG, rel,
+                              config->general.theme_dir,
+                              sizeof(config->general.theme_dir));
         }
 
         FILE *tf = fopen(theme_path, "r");

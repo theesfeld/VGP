@@ -1,6 +1,7 @@
 #include "server.h"
 #include "spawn.h"
 #include "vgp/log.h"
+#include "vgp/xdg.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -26,7 +27,7 @@ static void sigchld_handler(int sig)
 static void usage(const char *prog)
 {
     fprintf(stderr, "Usage: %s [OPTIONS]\n", prog);
-    fprintf(stderr, "  --config PATH   Config file path (default: ~/.config/vgp/config.toml)\n");
+    fprintf(stderr, "  --config PATH   Config file path (default: $XDG_CONFIG_HOME/vgp/config.toml)\n");
     fprintf(stderr, "  --help          Show this help\n");
 }
 
@@ -47,11 +48,12 @@ int main(int argc, char *argv[])
         }
     }
 
-    /* Redirect logs to user-writable location */
-    const char *home_dir = getenv("HOME");
-    char log_path[256];
-    if (home_dir) snprintf(log_path, sizeof(log_path), "%s/.config/vgp/vgp.log", home_dir);
-    else snprintf(log_path, sizeof(log_path), "/tmp/vgp-%d.log", getuid());
+    /* Redirect logs to $XDG_STATE_HOME/vgp/vgp.log per the XDG Base
+     * Directory Specification. Logs are state, not config. */
+    char log_path[512];
+    if (!vgp_xdg_resolve(VGP_XDG_STATE, "vgp/vgp.log",
+                           log_path, sizeof(log_path)))
+        snprintf(log_path, sizeof(log_path), "/tmp/vgp-%d.log", getuid());
     FILE *logfile = fopen(log_path, "w");
     if (logfile) {
         setvbuf(logfile, NULL, _IOLBF, 0);

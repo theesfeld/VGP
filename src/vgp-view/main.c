@@ -2,6 +2,7 @@
 
 #include "vgp/vgp.h"
 #include "vgp/protocol.h"
+#include "vgp/xdg.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
@@ -64,7 +65,11 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    FILE *logfile = fopen("/tmp/vgp-view.log", "w");
+    char log_path[512];
+    if (!vgp_xdg_resolve(VGP_XDG_STATE, "vgp/vgp-view.log",
+                           log_path, sizeof(log_path)))
+        snprintf(log_path, sizeof(log_path), "/tmp/vgp-view.log");
+    FILE *logfile = fopen(log_path, "w");
     if (logfile) { setvbuf(logfile, NULL, _IOLBF, 0); dup2(fileno(logfile), STDERR_FILENO); fclose(logfile); }
 
     signal(SIGPIPE, SIG_IGN);

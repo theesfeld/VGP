@@ -1,4 +1,5 @@
 #include "launcher.h"
+#include "vgp/xdg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,11 +14,10 @@ int launcher_init(launcher_t *l)
     launcher_scan_apps(&l->app_list);
     fprintf(stderr, "launcher: found %d apps\n", l->app_list.count);
 
-    /* Load launch history */
-    const char *home = getenv("HOME");
-    if (home) {
-        char path[512];
-        snprintf(path, sizeof(path), "%s/.config/vgp/launcher_history", home);
+    /* Launch history lives in $XDG_STATE_HOME/vgp/launcher_history. */
+    char path[512];
+    if (vgp_xdg_resolve(VGP_XDG_STATE, "vgp/launcher_history",
+                          path, sizeof(path))) {
         FILE *hf = fopen(path, "r");
         if (hf) {
             char line[256];
@@ -92,10 +92,9 @@ void launcher_launch_selected(launcher_t *l)
     launcher_app_t *app = &l->app_list.apps[app_idx];
 
     app->launch_count++;
-    const char *home = getenv("HOME");
-    if (home) {
-        char path[512];
-        snprintf(path, sizeof(path), "%s/.config/vgp/launcher_history", home);
+    char path[512];
+    if (vgp_xdg_resolve(VGP_XDG_STATE, "vgp/launcher_history",
+                          path, sizeof(path))) {
         FILE *hf = fopen(path, "w");
         if (hf) {
             for (int i = 0; i < l->app_list.count; i++) {

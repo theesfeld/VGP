@@ -1,4 +1,5 @@
 #include "term.h"
+#include "vgp/xdg.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -8,7 +9,11 @@ int main(int argc, char *argv[])
 {
     (void)argc; (void)argv;
 
-    FILE *logfile = fopen("/tmp/vgp-term.log", "w");
+    char log_path[512];
+    if (!vgp_xdg_resolve(VGP_XDG_STATE, "vgp/vgp-term.log",
+                           log_path, sizeof(log_path)))
+        snprintf(log_path, sizeof(log_path), "/tmp/vgp-term.log");
+    FILE *logfile = fopen(log_path, "w");
     if (logfile) {
         setvbuf(logfile, NULL, _IOLBF, 0);
         dup2(fileno(logfile), STDERR_FILENO);

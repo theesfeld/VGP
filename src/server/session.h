@@ -22,7 +22,7 @@ typedef struct vgp_session {
     bool                restoring; /* true if we loaded a session and are matching windows */
 } vgp_session_t;
 
-/* Save current window layout to ~/.config/vgp/session.json */
+/* Save current window layout to $XDG_STATE_HOME/vgp/session.json */
 int vgp_session_save(struct vgp_server *server);
 
 /* Load saved session layout (does not spawn; call match on new windows) */

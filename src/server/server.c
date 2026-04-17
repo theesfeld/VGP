@@ -373,6 +373,11 @@ int vgp_server_init(vgp_server_t *server, const char *config_path)
         vgp_spawn(server, server->config.session.autostart[i]);
     }
 
+    /* XDG Autostart: scan $XDG_CONFIG_HOME/autostart and each
+     * $XDG_CONFIG_DIRS/autostart for .desktop entries, honour
+     * Hidden=true and dedupe by filename. */
+    vgp_autostart_xdg(server);
+
     return 0;
 
 err_arena:
