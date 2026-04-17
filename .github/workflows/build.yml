@@ -24,7 +24,7 @@ jobs:
             mesa pam scdoc desktop-file-utils appstream
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Build
         run: |

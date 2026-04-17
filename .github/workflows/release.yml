@@ -40,7 +40,7 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
           submodules: recursive
@@ -60,7 +60,7 @@ jobs:
             --prefix="vgp-${V}/" \
             -o "vgp-${V}.tar.gz" HEAD
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: source-tarball
           path: vgp-*.tar.gz
@@ -80,7 +80,7 @@ jobs:
             libdrm libinput libxkbcommon libseat dbus libvterm \
             mesa pam scdoc desktop-file-utils appstream
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
 
@@ -92,7 +92,7 @@ jobs:
           DESTDIR="$PWD/pkg" meson install -C build
           tar czf "vgp-${TAG#v}-arch-x86_64.tar.gz" -C pkg .
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: arch-tarball
           path: vgp-*-arch-x86_64.tar.gz
@@ -118,7 +118,7 @@ jobs:
             scdoc desktop-file-utils appstream \
             fakeroot ca-certificates
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
 
@@ -137,7 +137,7 @@ jobs:
           mkdir -p dist
           mv ../*.deb dist/ || true
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: deb-packages
           path: dist/*.deb
@@ -160,7 +160,7 @@ jobs:
             dbus-devel libseat-devel pam-devel libvterm-devel \
             scdoc desktop-file-utils libappstream-glib
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0
@@ -183,7 +183,7 @@ jobs:
           find ~/rpmbuild/RPMS -name '*.rpm' -exec cp {} dist/ \;
           find ~/rpmbuild/SRPMS -name '*.rpm' -exec cp {} dist/ \;
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: rpm-packages
           path: dist/*.rpm
@@ -195,12 +195,12 @@ jobs:
     needs: [source, arch, deb, rpm]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
@@ -289,7 +289,7 @@ FOOTER
       # generate_release_notes: true fills in the PR-based summary
       # if the release was created by a raw tag push (not via UI).
       - name: Publish / update GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
           files: release/*
@@ -307,7 +307,7 @@ FOOTER
     env:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
 
