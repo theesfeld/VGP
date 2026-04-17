@@ -18,21 +18,22 @@ void vgp_theme_load_defaults(vgp_theme_t *theme)
     theme->button_spacing = 12.0f;
     theme->button_margin_right = 16.0f;
 
-    /* F-16 HUD colors: white/red/yellow on black */
-    theme->titlebar_active   = (vgp_color_t){0.04f, 0.04f, 0.05f, 0.10f}; /* barely-visible glass */
-    theme->titlebar_inactive = (vgp_color_t){0.03f, 0.03f, 0.04f, 0.07f};
+    /* F-16 HUD colors: white/red/yellow, now over sky.
+     * Glass picks up a faint blue tint; content stays dark for contrast. */
+    theme->titlebar_active   = (vgp_color_t){0.55f, 0.70f, 0.90f, 0.12f}; /* cool blue glass */
+    theme->titlebar_inactive = (vgp_color_t){0.50f, 0.60f, 0.75f, 0.07f};
     theme->border_active     = vgp_color_hex(0xFFD700); /* yellow accent */
-    theme->border_inactive   = vgp_color_hex(0x444444);
-    theme->title_text_active   = vgp_color_hex(0xEEEEDD); /* bright white */
-    theme->title_text_inactive = vgp_color_hex(0x666666);
+    theme->border_inactive   = vgp_color_hex(0x666666);
+    theme->title_text_active   = vgp_color_hex(0xFFFFF2); /* near-white */
+    theme->title_text_inactive = vgp_color_hex(0x888888);
     theme->close_btn         = vgp_color_hex(0xCCCCCC); /* white, red on hover */
     theme->maximize_btn      = vgp_color_hex(0xCCCCCC);
     theme->minimize_btn      = vgp_color_hex(0xCCCCCC);
     theme->close_btn_hover   = vgp_color_hex(0xFF3333);
-    theme->background        = vgp_color_hex(0x000000); /* pure black */
-    theme->statusbar_bg      = (vgp_color_t){0.03f, 0.03f, 0.04f, 0.08f}; /* glass */
-    theme->statusbar_text    = vgp_color_hex(0xEEEEDD);
-    theme->content_bg        = (vgp_color_t){0.02f, 0.02f, 0.03f, 0.55f}; /* translucent glass */
+    theme->background        = vgp_color_hex(0x000000);
+    theme->statusbar_bg      = (vgp_color_t){0.08f, 0.14f, 0.24f, 0.28f}; /* glass panel */
+    theme->statusbar_text    = vgp_color_hex(0xFFFFF2);
+    theme->content_bg        = (vgp_color_t){0.03f, 0.05f, 0.09f, 0.62f}; /* dark plexi, sky leaks at edges */
 
     /* Font sizes -- larger for readability */
     theme->title_font_size = 15.0f;

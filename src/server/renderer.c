@@ -96,79 +96,148 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
     float x = (float)f->x, y = (float)f->y;
     float w = (float)f->w, h = (float)f->h;
     float th = theme->titlebar_height;
-    float cr = theme->corner_radius > 0 ? theme->corner_radius : 6.0f;
+    float cr = theme->corner_radius > 0 ? theme->corner_radius : 8.0f;
     float fs = theme->title_font_size;
 
-    /* === HUD GLASS PANE ===
-     * Barely visible. You see through it.
-     * Like an F-16 HUD combiner -- the glass itself is almost invisible.
-     * Content is PROJECTED onto it (bright, crisp). */
+    /* === PHOTOREALISTIC PLEXIGLASS HUD PANEL ===
+     *
+     * Built from composited nanovg primitives -- no FBO blur.
+     *   1. Outer glass tint (cool blue, low alpha) -- sky refracts through
+     *   2. Content plate (darker, readable) with inner shadow
+     *   3. Specular highlight along the top edge
+     *   4. Bright rim on rounded corners for "plexi" thickness
+     *   5. Bottom inner shadow for depth
+     *   6. Faint outer glow when focused (yellow accent)
+     */
 
-    /* Glass pane: near-invisible tint */
+    /* 1. Outer soft glow -- only when focused, communicates focus */
+    if (focused) {
+        const vgp_color_t *ac = &theme->border_active;
+        for (int i = 3; i >= 1; i--) {
+            float g = (float)i;
+            float a = 0.05f / g;
+            b->ops->draw_rounded_rect(b, ctx,
+                                       x - g, y - g, w + 2 * g, h + 2 * g,
+                                       cr + g,
+                                       ac->r, ac->g, ac->b, a);
+        }
+    }
+
+    /* 2. Glass pane: cool-blue tint, very low alpha. Sky shows through. */
     const vgp_color_t *tb = focused ? &theme->titlebar_active : &theme->titlebar_inactive;
     b->ops->draw_rounded_rect(b, ctx, x, y, w, h, cr,
                                tb->r, tb->g, tb->b, tb->a);
 
-    /* Content area: dark for readability, slightly more opaque */
+    /* 3. Content plate: dark but translucent so clouds bleed through edges */
     const vgp_color_t *cb = &theme->content_bg;
-    b->ops->draw_rounded_rect(b, ctx, x + 1, y + th, w - 2, h - th - 1,
-                               cr > 1 ? cr - 1 : 1,
-                               cb->r, cb->g, cb->b, cb->a);
+    float inset = 2.0f;
+    b->ops->draw_rounded_rect(b, ctx, x + inset, y + th, w - inset * 2,
+                               h - th - inset,
+                               cr > inset ? cr - inset : 2.0f,
+                               cb->r, cb->g, cb->b,
+                               focused ? cb->a : cb->a * 0.85f);
 
-    /* Single thin border line -- like MFD bezel edge */
-    float border_alpha = focused ? 0.35f : 0.15f;
+    /* 4. Specular highlight: bright thin line along the top edge.
+     *    Real plexiglass catches light from above. */
+    float spec_a = focused ? 0.55f : 0.25f;
+    b->ops->draw_line(b, ctx,
+                       x + cr * 0.6f, y + 1.0f,
+                       x + w - cr * 0.6f, y + 1.0f,
+                       1.0f, 1.0f, 1.0f, 1.0f, spec_a);
+    /* Subtle second line = glass thickness */
+    b->ops->draw_line(b, ctx,
+                       x + cr, y + 2.0f,
+                       x + w - cr, y + 2.0f,
+                       0.5f, 1.0f, 1.0f, 1.0f, spec_a * 0.35f);
+
+    /* 5. Rim highlights on the top corners -- short diagonal accents */
+    float rim_a = focused ? 0.45f : 0.18f;
+    b->ops->draw_line(b, ctx,
+                       x + 2.0f, y + cr,
+                       x + cr, y + 2.0f,
+                       1.0f, 1.0f, 1.0f, 1.0f, rim_a);
+    b->ops->draw_line(b, ctx,
+                       x + w - cr, y + 2.0f,
+                       x + w - 2.0f, y + cr,
+                       1.0f, 1.0f, 1.0f, 1.0f, rim_a * 0.6f);
+
+    /* 6. Thin edge lines (sides + bottom) -- very faint, just shape outline */
     const vgp_color_t *bc = focused ? &theme->border_active : &theme->border_inactive;
-    b->ops->draw_line(b, ctx, x + cr, y, x + w - cr, y, 1.0f,
-                       bc->r, bc->g, bc->b, border_alpha);
-    b->ops->draw_line(b, ctx, x + cr, y + h, x + w - cr, y + h, 1.0f,
-                       bc->r, bc->g, bc->b, border_alpha);
-    b->ops->draw_line(b, ctx, x, y + cr, x, y + h - cr, 1.0f,
-                       bc->r, bc->g, bc->b, border_alpha);
+    float edge_a = focused ? 0.25f : 0.10f;
+    b->ops->draw_line(b, ctx, x, y + cr,  x, y + h - cr, 1.0f,
+                       bc->r, bc->g, bc->b, edge_a);
     b->ops->draw_line(b, ctx, x + w, y + cr, x + w, y + h - cr, 1.0f,
-                       bc->r, bc->g, bc->b, border_alpha);
+                       bc->r, bc->g, bc->b, edge_a);
+    b->ops->draw_line(b, ctx, x + cr, y + h, x + w - cr, y + h, 1.0f,
+                       0.0f, 0.0f, 0.0f, 0.45f); /* bottom: dark refraction */
 
-    /* Titlebar separator line */
-    b->ops->draw_line(b, ctx, x + 4, y + th, x + w - 4, y + th, 0.5f,
-                       bc->r, bc->g, bc->b, border_alpha * 0.5f);
+    /* Titlebar/content separator -- thin accent hairline */
+    b->ops->draw_line(b, ctx,
+                       x + cr, y + th + 0.5f,
+                       x + w - cr, y + th + 0.5f,
+                       0.5f, bc->r, bc->g, bc->b, edge_a * 0.6f);
 
     /* === ETCHED TITLE TEXT ===
-     * Static text = etched into glass.
-     * Just a subtle dark shadow behind the main text (not offset badly). */
+     * Static decoration = etched into the glass.
+     * Offset shadow gives the carved illusion. */
     if (win->title[0]) {
-        float text_x = x + 12.0f;
+        float text_x = x + 14.0f;
         float text_y = y + th * 0.5f + fs * 0.35f;
-        /* Dark backdrop shadow -- gives the "carved" look without blurring */
         b->ops->draw_text(b, ctx, win->title, -1, text_x + 1.0f, text_y + 1.0f, fs,
                            0.0f, 0.0f, 0.0f, focused ? 0.8f : 0.5f);
-        /* Main text */
         const vgp_color_t *tc = focused ? &theme->title_text_active
                                         : &theme->title_text_inactive;
         b->ops->draw_text(b, ctx, win->title, -1, text_x, text_y, fs,
-                           tc->r, tc->g, tc->b, focused ? 0.9f : 0.5f);
+                           tc->r, tc->g, tc->b, focused ? 0.95f : 0.55f);
     }
 
-    /* === CONTROL BUTTONS (small circles, MFD style) === */
+    /* === CONTROL BUTTONS (plexi discs, HUD style) === */
     float btn_r = theme->button_radius;
     float btn_spacing = theme->button_spacing;
     float btn_cy = y + th * 0.5f;
 
-    /* Close -- white circle, X inside */
     float close_cx = x + w - 14 - btn_r;
+    float max_cx   = close_cx - btn_r * 2 - btn_spacing;
+    float min_cx   = max_cx   - btn_r * 2 - btn_spacing;
+
+    float disc_a = focused ? 0.75f : 0.35f;
     b->ops->draw_circle(b, ctx, close_cx, btn_cy, btn_r,
                          theme->close_btn.r, theme->close_btn.g,
-                         theme->close_btn.b, focused ? 0.6f : 0.25f);
-
-    /* Maximize */
-    float max_cx = close_cx - btn_r * 2 - btn_spacing;
+                         theme->close_btn.b, disc_a);
     b->ops->draw_circle(b, ctx, max_cx, btn_cy, btn_r,
                          theme->maximize_btn.r, theme->maximize_btn.g,
-                         theme->maximize_btn.b, focused ? 0.4f : 0.2f);
-
-    /* Minimize */
-    float min_cx = max_cx - btn_r * 2 - btn_spacing;
+                         theme->maximize_btn.b, disc_a);
     b->ops->draw_circle(b, ctx, min_cx, btn_cy, btn_r,
                          theme->minimize_btn.r, theme->minimize_btn.g,
-                         theme->minimize_btn.b, focused ? 0.8f : 0.4f);
+                         theme->minimize_btn.b, disc_a);
+
+    /* Inset glyphs on buttons: X / [] / _ */
+    float g_a = focused ? 0.85f : 0.40f;
+    float gr = btn_r * 0.55f;
+    /* close: X */
+    b->ops->draw_line(b, ctx, close_cx - gr, btn_cy - gr,
+                               close_cx + gr, btn_cy + gr,
+                       1.0f, 0.0f, 0.0f, 0.0f, g_a);
+    b->ops->draw_line(b, ctx, close_cx - gr, btn_cy + gr,
+                               close_cx + gr, btn_cy - gr,
+                       1.0f, 0.0f, 0.0f, 0.0f, g_a);
+    /* maximize: box */
+    b->ops->draw_line(b, ctx, max_cx - gr, btn_cy - gr,
+                               max_cx + gr, btn_cy - gr,
+                       1.0f, 0.0f, 0.0f, 0.0f, g_a);
+    b->ops->draw_line(b, ctx, max_cx + gr, btn_cy - gr,
+                               max_cx + gr, btn_cy + gr,
+                       1.0f, 0.0f, 0.0f, 0.0f, g_a);
+    b->ops->draw_line(b, ctx, max_cx + gr, btn_cy + gr,
+                               max_cx - gr, btn_cy + gr,
+                       1.0f, 0.0f, 0.0f, 0.0f, g_a);
+    b->ops->draw_line(b, ctx, max_cx - gr, btn_cy + gr,
+                               max_cx - gr, btn_cy - gr,
+                       1.0f, 0.0f, 0.0f, 0.0f, g_a);
+    /* minimize: underscore */
+    b->ops->draw_line(b, ctx, min_cx - gr, btn_cy + gr * 0.5f,
+                               min_cx + gr, btn_cy + gr * 0.5f,
+                       1.0f, 0.0f, 0.0f, 0.0f, g_a);
 }
 
 /* Render a cell grid (vector terminal) directly with the backend */

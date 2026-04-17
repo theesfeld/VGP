@@ -358,13 +358,33 @@ void vgp_panel_render(vgp_render_backend_t *b, void *ctx,
     const vgp_color_t *ac = &theme->border_active;
     const vgp_color_t *tc = &theme->statusbar_text;
 
-    /* Glass panel background: very subtle tint (glass blur drawn in separate pass) */
-    b->ops->draw_rect(b, ctx, g.x, g.y, g.w, g.h, bg->r, bg->g, bg->b, 0.3f);
+    /* === HUD OVERLAY PANEL ===
+     * Cool blue glass strip across the top edge of the display.
+     * Layered fills simulate plexi thickness; lines are the bezel trim. */
 
-    /* Edge highlight (glass surface) */
-    float border_y = g.top ? g.y + g.h : g.y;
+    /* Main plexi pane */
+    b->ops->draw_rect(b, ctx, g.x, g.y, g.w, g.h,
+                       bg->r, bg->g, bg->b, bg->a);
+    /* Inner darker strip for readability under text */
+    b->ops->draw_rect(b, ctx, g.x, g.y + g.h * 0.25f, g.w, g.h * 0.5f,
+                       0.02f, 0.03f, 0.06f, 0.35f);
+
+    /* Specular sheen along the top surface (light from above) */
+    if (g.top) {
+        b->ops->draw_line(b, ctx, 0, g.y + 0.5f, g.w, g.y + 0.5f, 1.0f,
+                           1.0f, 1.0f, 1.0f, 0.55f);
+        b->ops->draw_line(b, ctx, 0, g.y + 1.5f, g.w, g.y + 1.5f, 0.5f,
+                           1.0f, 1.0f, 1.0f, 0.18f);
+    }
+
+    /* Bezel: bright line on the edge facing the content */
+    float border_y = g.top ? g.y + g.h - 0.5f : g.y + 0.5f;
     b->ops->draw_line(b, ctx, 0, border_y, g.w, border_y, 1.0f,
-                       1.0f, 1.0f, 1.0f, 0.15f);
+                       ac->r, ac->g, ac->b, 0.55f);
+    /* Shadow under the bezel */
+    float shadow_y = g.top ? border_y + 1.0f : border_y - 1.0f;
+    b->ops->draw_line(b, ctx, 0, shadow_y, g.w, shadow_y, 1.0f,
+                       0.0f, 0.0f, 0.0f, 0.35f);
 
     panel_ctx_t p = {
         .b = b, .ctx = ctx, .theme = theme, .comp = comp,
