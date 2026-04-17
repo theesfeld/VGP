@@ -54,44 +54,61 @@ approximation). `VGP_CPU=1` forces the plutovg CPU renderer.
 
 ## Releases
 
-Release notes on the GitHub Releases page are assembled automatically
-when a `v<version>` tag is pushed:
+The release pipeline is triggered two ways — pick whichever is more
+convenient. The end result is the same: a single GitHub Release with
+`.deb` / `.rpm` / source / Arch artifacts attached and a release body
+containing user notes + the auto-generated PR summary + our git-log
+commit list + install instructions.
 
-1. **PR-based summary** (top): GitHub's native `generate_release_notes`
-   walks every merged PR since the previous tag and groups them by the
-   label categories configured in `.github/release.yml` (Features, Bug
-   fixes, Documentation, Packaging, UI / rendering, Other). Each entry
-   reads `- PR title by @author in #N`.
-2. **Highlights** (middle): the section of `CHANGELOG.md` whose heading
-   matches the released version (`## [x.y.z]`). Maintain this by
-   moving items out of `## [Unreleased]` into a new versioned section
-   before tagging.
-3. **Commits** (middle): a full `git log` since the previous tag, one
-   line per commit, with a short SHA linked to the commit page and
-   `@author` attribution. Catches direct pushes to `master` that the
-   PR-based generator would miss.
-4. **Full diff link**, **Artifacts** list, and **Install** table
-   (bottom).
+### A. GitHub UI ("Draft a new release") — recommended
 
-To cut a release:
+1. Open **Releases → Draft a new release**.
+2. **Choose a tag**: type the new tag name (e.g. `v0.2.0`) and select
+   *Create new tag on publish*.
+3. **Target**: pick `master` (or the exact commit you want to ship).
+4. **Title**: `v0.2.0` (or any short title).
+5. Click **Generate release notes** — GitHub fills the body with a
+   PR-based "What's Changed" summary, author attribution, and a
+   "New Contributors" block. Labels on those PRs drive the section
+   grouping defined in `.github/release.yml`.
+6. Edit the notes if you want; add Highlights / breaking-change
+   callouts etc.
+7. Click **Publish release**.
+
+The moment the release is published, `.github/workflows/release.yml`
+fires on the `release: published` event. It:
+
+- Builds the source tarball, Arch prefix tree, Debian `.deb` trio, and
+  Fedora `.rpm` trio — ~10 minutes in parallel.
+- Uploads every artifact plus `SHA256SUMS` to the release.
+- Appends a **Commits** section (full `git log` since the previous
+  tag, one line per commit, with `@author` attribution — catches any
+  direct push-to-master that the PR-based summary would miss) and an
+  **Install** block to the release body.
+
+Your hand-written notes and the UI auto-summary are preserved.
+
+### B. Command line — `git push origin v0.2.0`
+
+Useful for scripting / headless workflows.
 
 ```bash
-# 1. Move everything under [Unreleased] into a new [0.2.0] section.
+# 1. (optional) Move everything under [Unreleased] into a new
+#    ## [0.2.0] section in CHANGELOG.md.
 vim CHANGELOG.md
 
 # 2. Bump meson version.
 sed -i "s/^  version : '.*'/  version : '0.2.0',/" meson.build
 
-# 3. Commit + tag + push.
+# 3. Commit + annotated tag + push the tag.
 git commit -am "Release 0.2.0"
 git tag -a v0.2.0 -m "Release 0.2.0"
 git push origin master v0.2.0
 ```
 
-The release workflow (`.github/workflows/release.yml`) fans out into
-source / arch / deb / rpm build jobs, collects everything into one
-release, and attaches the assembled notes + `SHA256SUMS` to the GitHub
-Release.
+On `push: tags` the workflow runs the same build matrix and creates
+the Release from scratch — `generate_release_notes: true` produces
+the PR summary, then our commit-log + install footer is appended.
 
 ### PR labels that drive categorization
 
