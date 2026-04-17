@@ -1,5 +1,6 @@
-# Maintainer: VGP Project
+# Maintainer: William Theesfeld <tj.theesfeld@citywide.io>
 pkgname=vgp-git
+_pkgname=vgp
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="GPU-accelerated vector display server and desktop environment"
@@ -10,7 +11,7 @@ depends=(
   'libdrm'
   'libinput'
   'libxkbcommon'
-  'seatd'
+  'libseat'
   'dbus'
   'libvterm'
   'mesa'
@@ -20,52 +21,48 @@ makedepends=(
   'meson'
   'ninja'
   'git'
+  'pkgconf'
+  'scdoc'
 )
-provides=('vgp')
-conflicts=('vgp')
-source=("git+${url}.git")
+checkdepends=(
+  'desktop-file-utils'
+  'appstream'
+)
+provides=("${_pkgname}=${pkgver}")
+conflicts=("${_pkgname}")
+source=("${_pkgname}::git+${url}.git")
 sha256sums=('SKIP')
 
 pkgver() {
-  cd VGP
-  git describe --long --tags 2>/dev/null | sed 's/^v//;s/-/.r/;s/-/./' || echo "$pkgver"
+  cd "$_pkgname"
+  git describe --long --tags 2>/dev/null \
+    | sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g' \
+    || printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 build() {
-  cd VGP
-  meson setup build --prefix=/usr -Dbuildtype=release
+  cd "$_pkgname"
+  arch-meson build
   meson compile -C build
 }
 
+check() {
+  cd "$_pkgname"
+  meson test -C build --print-errorlogs || true
+
+  # Freedesktop spec validation
+  for f in data/*.desktop vgp.desktop; do
+    desktop-file-validate "$f"
+  done
+  for f in data/metainfo/*.metainfo.xml; do
+    appstreamcli validate --strict "$f" || true
+  done
+}
+
 package() {
-  cd VGP
+  cd "$_pkgname"
   meson install -C build --destdir="$pkgdir"
 
-  # Install session file for greeters
-  install -Dm644 vgp.desktop "$pkgdir/usr/share/wayland-sessions/vgp.desktop"
-
-  # License
-  install -Dm644 /dev/stdin "$pkgdir/usr/share/licenses/$pkgname/LICENSE" <<EOF
-MIT License
-
-Copyright (c) 2026 VGP Project
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-EOF
+  # Standard Arch license placement
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
