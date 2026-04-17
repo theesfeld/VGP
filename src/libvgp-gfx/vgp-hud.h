@@ -16,28 +16,40 @@
 
 /* ------------------------------------------------------------
  * Palette
+ *
+ * Rule (per project direction):
+ *   - STATIC (labels, frames, non-changing decoration) = BLACK
+ *   - DYNAMIC (values, pointers, live state) = white / yellow / red
+ *     phosphor
+ * Black is the "etched into the glass" tone; the white/red/yellow
+ * are "projected onto the glass" phosphor cues.
  * ------------------------------------------------------------ */
 
 typedef struct {
-    vgfx_color_t fg;    /* primary white text */
-    vgfx_color_t dim;   /* dim gray -- etched labels, grid */
-    vgfx_color_t hi;    /* bright white -- emphasis */
-    vgfx_color_t warn;  /* yellow accent */
-    vgfx_color_t crit;  /* red critical */
+    /* Dynamic phosphor colors */
+    vgfx_color_t fg;    /* white phosphor -- primary dynamic readout */
+    vgfx_color_t hi;    /* brightest white -- emphasis */
+    vgfx_color_t warn;  /* yellow phosphor -- warning / accent */
+    vgfx_color_t crit;  /* red phosphor -- critical / error */
+    /* Static etch tones */
+    vgfx_color_t etch;  /* near-black -- static labels, frames, decoration */
+    vgfx_color_t dim;   /* legacy alias for etch */
+    /* Infrastructure */
     vgfx_color_t bg;    /* transparent -- glass shows through */
-    vgfx_color_t shade; /* thin background fill for data plates */
+    vgfx_color_t shade; /* thin dark fill behind etched text for readability */
 } hud_palette_t;
 
 static inline hud_palette_t hud_palette(void)
 {
     hud_palette_t p;
     p.fg    = vgfx_rgba(0.95f, 0.95f, 0.95f, 1.0f);
-    p.dim   = vgfx_rgba(0.50f, 0.50f, 0.52f, 1.0f);
     p.hi    = vgfx_rgba(1.0f,  1.0f,  1.0f,  1.0f);
     p.warn  = vgfx_rgba(1.0f,  0.85f, 0.0f,  1.0f);
     p.crit  = vgfx_rgba(1.0f,  0.30f, 0.30f, 1.0f);
+    p.etch  = vgfx_rgba(0.0f,  0.0f,  0.0f,  0.85f);  /* static = black */
+    p.dim   = p.etch;
     p.bg    = vgfx_rgba(0.0f,  0.0f,  0.0f,  0.0f);
-    p.shade = vgfx_rgba(0.06f, 0.09f, 0.14f, 0.35f);
+    p.shade = vgfx_rgba(0.0f,  0.0f,  0.0f,  0.20f);
     return p;
 }
 
@@ -60,16 +72,18 @@ static inline void hud_etched(vgfx_ctx_t *ctx, const char *s,
                                 float x, float y, float fs,
                                 const hud_palette_t *p)
 {
-    vgfx_text(ctx, s, x + 0.6f, y + 0.6f, fs, vgfx_rgba(0, 0, 0, 0.55f));
-    vgfx_text(ctx, s, x,        y,        fs, p->dim);
+    /* Static text is black etching. No shadow needed -- black on a
+     * bright sky already reads. Tight 0.5px outer edge gives it bite. */
+    vgfx_text(ctx, s, x + 0.5f, y, fs, vgfx_rgba(1, 1, 1, 0.18f));
+    vgfx_text(ctx, s, x,        y, fs, p->etch);
 }
 
 static inline void hud_etched_bold(vgfx_ctx_t *ctx, const char *s,
                                      float x, float y, float fs,
                                      const hud_palette_t *p)
 {
-    vgfx_text_bold(ctx, s, x + 0.6f, y + 0.6f, fs, vgfx_rgba(0, 0, 0, 0.55f));
-    vgfx_text_bold(ctx, s, x,        y,        fs, p->dim);
+    vgfx_text_bold(ctx, s, x + 0.5f, y, fs, vgfx_rgba(1, 1, 1, 0.18f));
+    vgfx_text_bold(ctx, s, x,        y, fs, p->etch);
 }
 
 static inline void hud_projected(vgfx_ctx_t *ctx, const char *s,

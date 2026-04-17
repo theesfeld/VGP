@@ -162,18 +162,52 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
      *    just below the top edge, fading down. Stacked horizontal rects
      *    with decreasing alpha simulate the gradient in pure nanovg. */
     {
-        int bands = 10;
+        int bands = 12;
         float inner_x = x + cr * 0.55f;
         float inner_w = w - cr * 1.10f;
         for (int i = 0; i < bands; i++) {
             float fi = (float)i;
             float band_y = y + 1.5f + fi * 2.0f;
             float a = (1.0f - fi / (float)bands);
-            a = a * a * (focused ? 0.22f : 0.11f);
+            a = a * a * (focused ? 0.26f : 0.13f);
             b->ops->draw_rect(b, ctx,
                                inner_x, band_y,
                                inner_w, 1.8f,
                                1.0f, 1.0f, 1.0f, a);
+        }
+    }
+
+    /* 5b. FRESNEL INNER RING
+     *     Glass reflects more light at grazing angles. In 2D we fake
+     *     this by drawing a bright alpha band just inside the whole
+     *     perimeter -- the pane lights up at its edges more than in
+     *     the centre. 5 stacked lines per edge fade toward the inside. */
+    {
+        float base_a = focused ? 0.14f : 0.07f;
+        for (int i = 0; i < 5; i++) {
+            float fi = (float)i;
+            float inset = 1.5f + fi * 1.0f;
+            float a = base_a * (1.0f - fi / 5.0f);
+            /* top */
+            b->ops->draw_line(b, ctx,
+                               x + cr, y + inset,
+                               x + w - cr, y + inset,
+                               0.8f, 1.0f, 1.0f, 1.0f, a);
+            /* bottom */
+            b->ops->draw_line(b, ctx,
+                               x + cr, y + h - inset,
+                               x + w - cr, y + h - inset,
+                               0.8f, 1.0f, 1.0f, 1.0f, a * 0.6f);
+            /* left */
+            b->ops->draw_line(b, ctx,
+                               x + inset, y + cr,
+                               x + inset, y + h - cr,
+                               0.8f, 1.0f, 1.0f, 1.0f, a);
+            /* right */
+            b->ops->draw_line(b, ctx,
+                               x + w - inset, y + cr,
+                               x + w - inset, y + h - cr,
+                               0.8f, 1.0f, 1.0f, 1.0f, a);
         }
     }
 
@@ -243,17 +277,18 @@ static void render_decoration(vgp_render_backend_t *b, void *ctx,
                        0.5f, bc->r, bc->g, bc->b, edge_a * 0.8f);
 
     /* === ETCHED TITLE TEXT ===
-     * Static decoration = etched into the glass.
-     * Offset shadow gives the carved illusion. */
+     * Static text -- black etching into the glass. A thin white
+     * highlight edge to its top-left gives it the carved illusion
+     * against the bright sky behind. */
     if (win->title[0]) {
         float text_x = x + 14.0f;
         float text_y = y + th * 0.5f + fs * 0.35f;
-        b->ops->draw_text(b, ctx, win->title, -1, text_x + 1.0f, text_y + 1.0f, fs,
-                           0.0f, 0.0f, 0.0f, focused ? 0.8f : 0.5f);
-        const vgp_color_t *tc = focused ? &theme->title_text_active
-                                        : &theme->title_text_inactive;
+        /* Highlight to the top-left (beveled lip of the etch) */
+        b->ops->draw_text(b, ctx, win->title, -1, text_x - 0.5f, text_y - 0.5f, fs,
+                           1.0f, 1.0f, 1.0f, focused ? 0.25f : 0.12f);
+        /* Main etch: pure black, strong alpha */
         b->ops->draw_text(b, ctx, win->title, -1, text_x, text_y, fs,
-                           tc->r, tc->g, tc->b, focused ? 0.95f : 0.55f);
+                           0.0f, 0.0f, 0.0f, focused ? 0.90f : 0.60f);
     }
 
     /* === CONTROL BUTTONS (plexi discs, HUD style) === */

@@ -184,15 +184,19 @@ static void sample(void)
  * HUD colors
  * ============================================================ */
 
+/* Palette rule:
+ *   DYNAMIC (values, pointers, fills) = white / yellow / red phosphor
+ *   STATIC  (labels, frames, tick marks) = black etching
+ */
 static vgfx_color_t C_FG, C_DIM, C_HI, C_WARN, C_CRIT, C_BG;
 
 static void init_colors(void) {
-    C_FG   = vgfx_rgba(0.95f, 0.95f, 0.95f, 1.0f);  /* primary white */
-    C_DIM  = vgfx_rgba(0.45f, 0.45f, 0.45f, 1.0f);  /* dim gray */
-    C_HI   = vgfx_rgba(1.0f, 1.0f, 1.0f, 1.0f);     /* bright white */
-    C_WARN = vgfx_rgba(1.0f, 0.85f, 0.0f, 1.0f);    /* yellow */
-    C_CRIT = vgfx_rgba(1.0f, 0.3f, 0.3f, 1.0f);     /* red */
-    C_BG   = vgfx_rgba(0.0f, 0.0f, 0.0f, 0.0f);     /* transparent */
+    C_FG   = vgfx_rgba(0.95f, 0.95f, 0.95f, 1.0f);  /* white phosphor */
+    C_DIM  = vgfx_rgba(0.0f,  0.0f,  0.0f,  0.85f); /* static = black etch */
+    C_HI   = vgfx_rgba(1.0f,  1.0f,  1.0f,  1.0f);  /* bright white */
+    C_WARN = vgfx_rgba(1.0f,  0.85f, 0.0f,  1.0f);  /* yellow phosphor */
+    C_CRIT = vgfx_rgba(1.0f,  0.3f,  0.3f,  1.0f);  /* red phosphor */
+    C_BG   = vgfx_rgba(0.0f,  0.0f,  0.0f,  0.0f);  /* transparent */
 }
 
 static vgfx_color_t usage_color(float v) {

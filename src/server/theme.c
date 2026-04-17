@@ -33,9 +33,9 @@ void vgp_theme_load_defaults(vgp_theme_t *theme)
     theme->background        = vgp_color_hex(0x000000);
     theme->statusbar_bg      = (vgp_color_t){0.08f, 0.14f, 0.24f, 0.22f}; /* glass panel */
     theme->statusbar_text    = vgp_color_hex(0xFFFFF2);
-    /* Content plate: low alpha so the sky shows clearly through.
+    /* Content plate: genuinely translucent so the sky reads through.
      * Apps paint bright vector primitives on top -- HUD projection. */
-    theme->content_bg        = (vgp_color_t){0.03f, 0.06f, 0.11f, 0.38f};
+    theme->content_bg        = (vgp_color_t){0.02f, 0.04f, 0.08f, 0.22f};
 
     /* Font sizes -- larger for readability */
     theme->title_font_size = 15.0f;
